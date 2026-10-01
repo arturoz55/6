@@ -347,7 +347,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.`;
 function openLicense() {
-  openModal('MIT license', `<pre id="licTxt">${esc(LICENSE)}</pre><div class="bar" style="margin:14px 0 0"><button class="btn ghost" id="copyLic" type="button">Copy license</button></div>`);
+  openModal('MIT license', `<pre id="licTxt">${esc(LICENSE)}</pre><p class="hint" style="margin-top:12px">The MIT license covers the code. The hero photo, <a href="https://commons.wikimedia.org/wiki/File:Singapore_Marina_Bay_Dusk_2018-02-27.jpg" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">Singapore Marina Bay Dusk</a> by Benh LIEU SONG, is used under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">CC BY-SA 4.0</a>, resized.</p><div class="bar" style="margin:14px 0 0"><button class="btn ghost" id="copyLic" type="button">Copy license</button></div>`);
   $('#copyLic').onclick = () => {
     const done = () => toast('License copied');
     try { navigator.clipboard.writeText(LICENSE).then(done, selectLic); } catch (e) { selectLic(); }
@@ -454,7 +454,6 @@ let chart = null, chartSeries = null, volSeries = null, chartCoin = null, chartT
 function render() {
   destroyChart();
   coinPaint = null; lowTab = 'trades';
-  if (dusk) { dusk.destroy(); dusk = null; }
   const [p, a] = routeParts();
   renderNav();
   const view = $('#view');
@@ -476,7 +475,7 @@ function home(v) {
   const held = coins.reduce((s, c) => s + Math.max(0, c.vq - c.vq0) * S.stocks[c.co].px, 0);
   const word = 'sharecurve';
   v.innerHTML = `<section class="dusk" aria-label="Sharecurve">
-    <canvas id="skyline" aria-hidden="true"></canvas>
+    <img class="dusk-photo" src="img/marina-dusk-2400.jpg" srcset="img/marina-dusk-1200.jpg 1200w, img/marina-dusk-2400.jpg 2400w" sizes="(max-width: 700px) 1200px, 100vw" alt="Marina Bay in Singapore at dusk: lit glass towers over still water" fetchpriority="high" decoding="async">
     <div class="dusk-top">
       <span class="eyebrow"><span class="live-dot"></span>Demo network · live</span>
       <p class="lede">Launch a coin priced in shares of the company behind the app. Instagram trades against <em>META</em>, YouTube against <em>GOOGL</em>, Netflix against <em>NFLX</em>. Every buy puts the stock itself into the curve.</p>
@@ -485,6 +484,7 @@ function home(v) {
     </div>
     <div class="dusk-word" aria-hidden="true">${word.split('').map((ch, i) => `<span style="animation-delay:${0.15 + i * 0.045}s">${ch}</span>`).join('')}</div>
     <a class="dusk-card" id="duskCard" href="#/"></a>
+    <a class="photo-credit" href="https://commons.wikimedia.org/wiki/File:Singapore_Marina_Bay_Dusk_2018-02-27.jpg" target="_blank" rel="noopener noreferrer">Photo: Benh LIEU SONG · CC BY-SA 4.0</a>
   </section>
   <div class="stats">
     <div class="stat"><div class="eyebrow">24h volume</div><div class="v" data-count="${vol}" data-fmt="money">${money(vol, { compact: 1 })}</div></div>
@@ -498,7 +498,7 @@ function home(v) {
   <div class="grid" id="board"></div>`;
   countUp(v);
   cyclePair();
-  dusk = makeDusk($('#skyline'));
+  bindPhoto($('.dusk'));
   paintDuskCard();
   const recent = coins.flatMap(c => c.trades.slice(-3).map(t => ({ c, t }))).sort((a, b) => b.t.t - a.t.t).slice(0, 14);
   $('#feed').innerHTML = recent.map(x => feedItem(x.c, x.t)).join('');
@@ -535,150 +535,16 @@ function cyclePair() {
   pdTimer = setInterval(() => { const el = $('#pd'); if (!el) return clearInterval(pdTimer); i = (i + 1) % pairs.length; el.innerHTML = `<b>${pairs[i][0]}</b>→<i>${pairs[i][1]}</i>`; el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap'); }, 2200);
 }
 
-// ---------- the skyline: a procedurally drawn city at dusk ----------
-let dusk = null;
-function makeDusk(cv) {
-  if (!cv) return null;
-  const ctx = cv.getContext('2d');
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let W = 0, H = 0, G = 0, dpr = 1, layers = [], stars = [], clouds = [], beacons = [], tower = null;
-  let raf = 0, last = 0, mx = 0, tmx = 0, visible = true, dead = false, twinkleAt = 0;
-  const R = mulberry(4242);
-  const pick = a => a[Math.floor(R() * a.length)];
-
-  function layer(depth) {
-    const pad = 60, c = document.createElement('canvas');
-    c.width = (W + pad * 2) * dpr; c.height = G * dpr;
-    const x = c.getContext('2d'); x.scale(dpr, dpr);
-    const spec = [
-      { col: 'rgba(122,104,170,.55)', min: .10, max: .30, wmin: 26, wmax: 60, win: 0 },
-      { col: '#3a3570', min: .14, max: .40, wmin: 30, wmax: 70, win: .35 },
-      { col: '#1b1c45', min: .10, max: .30, wmin: 40, wmax: 90, win: .45 },
-    ][depth];
-    const wins = [];
-    let bx = -pad + R() * 20;
-    while (bx < W + pad) {
-      const bw = spec.wmin + R() * (spec.wmax - spec.wmin);
-      // keep the right edge low on the near layer so the glass tower reads
-      const bh = H * (spec.min + Math.pow(R(), 1.4) * (spec.max - spec.min));
-      const top = G - bh, X = bx + pad;
-      x.fillStyle = spec.col; x.fillRect(X, top, bw, bh);
-      if (R() < .35) { x.fillRect(X + bw * .3, top - 10 - R() * 20, bw * .4, 30); }       // setback
-      if (R() < .25) { x.fillRect(X + bw / 2 - 1, top - 30 - R() * 40, 2, 40); }           // antenna
-      if (depth === 1 && bh > H * .3) beacons.push({ x: X + bw / 2, y: top - 4, p: R() * 6 });
-      if (depth > 0) {
-        // sun-side edge catches the light
-        x.fillStyle = depth === 1 ? 'rgba(255,170,140,.18)' : 'rgba(255,170,140,.12)'; x.fillRect(X, top, 2, bh);
-        const cw = depth === 2 ? 5 : 3, ch = depth === 2 ? 6 : 4, gx = depth === 2 ? 9 : 6, gy = depth === 2 ? 11 : 8;
-        for (let wy = top + 8; wy < G - 8; wy += gy) for (let wx = X + 5; wx < X + bw - cw - 3; wx += gx) {
-          const on = R() < spec.win * (1 - (wy - top) / bh * .3);
-          const w = { x: wx, y: wy, w: cw, h: ch, on, warm: R() < .78 };
-          wins.push(w); paintWin(x, w);
-        }
-      }
-      bx += bw + (depth === 0 ? -6 : R() * 6);
-    }
-    return { c, x, depth, wins, pad };
-  }
-  function paintWin(x, w) {
-    x.fillStyle = w.on ? (w.warm ? 'rgba(255,206,140,.92)' : 'rgba(190,212,255,.85)') : 'rgba(150,140,210,.10)';
-    x.fillRect(w.x, w.y, w.w, w.h);
-  }
-  function makeTower() {
-    const c = document.createElement('canvas'), tw = Math.max(110, W * .2), th = H * .7;
-    c.width = tw * dpr; c.height = th * dpr;
-    const x = c.getContext('2d'); x.scale(dpr, dpr);
-    const g = x.createLinearGradient(0, 0, tw * .4, th);
-    g.addColorStop(0, '#1a1f52'); g.addColorStop(.5, '#3d3878'); g.addColorStop(.85, '#a2667f'); g.addColorStop(1, '#e09478');
-    x.fillStyle = g; x.fillRect(0, 0, tw, th);
-    // sky reflected in the glass, slightly offset per panel
-    for (let px = 0; px < tw; px += 26) { x.fillStyle = `rgba(255,255,255,${.03 + R() * .05})`; x.fillRect(px, 0, 13, th); }
-    x.fillStyle = 'rgba(10,12,40,.55)';
-    for (let py = 0; py < th; py += 16) x.fillRect(0, py, tw, 2);
-    for (let px = 0; px < tw; px += 26) x.fillRect(px, 0, 1.5, th);
-    // a few floors lit from inside
-    for (let py = 16; py < th; py += 16) if (R() < .1) {
-      const lx = R() * tw * .5; x.fillStyle = 'rgba(255,214,160,.4)'; x.fillRect(lx, py + 4, tw * (.15 + R() * .3), 8);
-    }
-    const sh = x.createLinearGradient(0, 0, tw, 0); sh.addColorStop(0, 'rgba(255,255,255,.18)'); sh.addColorStop(.08, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,20,.35)');
-    x.fillStyle = sh; x.fillRect(0, 0, tw, th);
-    return { c, w: tw, h: th };
-  }
-  function build() {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    W = cv.clientWidth; H = cv.clientHeight; if (!W || !H) return;
-    cv.width = W * dpr; cv.height = H * dpr;
-    G = Math.round(H * .8);
-    beacons = [];
-    stars = Array.from({ length: Math.round(W / 14) }, () => ({ x: R() * W, y: R() * H * .38, r: .3 + R() * 1.1, p: R() * 6 }));
-    clouds = Array.from({ length: 7 }, () => ({ x: R() * W, y: H * (.08 + R() * .34), w: W * (.18 + R() * .3), h: 4 + R() * 12, s: 3 + R() * 7, a: .05 + R() * .12 }));
-    layers = [layer(0), layer(1), layer(2)];
-    tower = makeTower();
-  }
-  function frame(t) {
-    if (dead) return;
-    raf = requestAnimationFrame(frame);
-    if (!visible || t - last < 33) return;
-    const dt = Math.min(0.1, (t - (last || t)) / 1000); last = t;
-    mx += (tmx - mx) * .06;
-    draw(t / 1000, dt);
-  }
-  function draw(T, dt) {
-    if (!W) return;
-    const x = ctx; x.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const sky = x.createLinearGradient(0, 0, 0, G);
-    sky.addColorStop(0, '#141a46'); sky.addColorStop(.35, '#2c2f74'); sky.addColorStop(.62, '#7a5a9a'); sky.addColorStop(.82, '#e48a7e'); sky.addColorStop(1, '#ffc58f');
-    x.fillStyle = sky; x.fillRect(0, 0, W, G);
-    for (const s of stars) { x.globalAlpha = (.35 + .45 * Math.sin(T * 1.3 + s.p)) * (1 - s.y / (H * .38)); x.fillStyle = '#fff'; x.fillRect(s.x, s.y, s.r, s.r); }
-    x.globalAlpha = 1;
-    // the sun, low and slowly sinking
-    const sx = W * .36 - mx * 6, sy = G - H * .05 + Math.sin(T * .05) * 4;
-    const glow = x.createRadialGradient(sx, sy, 0, sx, sy, H * .55);
-    glow.addColorStop(0, 'rgba(255,214,160,.95)'); glow.addColorStop(.06, 'rgba(255,190,140,.7)'); glow.addColorStop(.3, 'rgba(240,130,120,.22)'); glow.addColorStop(1, 'rgba(240,130,120,0)');
-    x.fillStyle = glow; x.fillRect(0, 0, W, G);
-    x.fillStyle = '#ffe2b8'; x.beginPath(); x.arc(sx, sy, Math.max(14, H * .035), 0, 7); x.fill();
-    for (const c of clouds) {
-      c.x += c.s * dt; if (c.x - c.w > W) c.x = -c.w;
-      const cg = x.createLinearGradient(0, c.y - c.h, 0, c.y + c.h); cg.addColorStop(0, `rgba(255,190,190,${c.a})`); cg.addColorStop(1, `rgba(120,90,170,${c.a * .6})`);
-      x.fillStyle = cg; x.beginPath(); x.ellipse(c.x, c.y, c.w / 2, c.h, 0, 0, 7); x.fill();
-    }
-    // twinkle a few windows so the city feels lived in
-    if (T - twinkleAt > .25 && layers.length) {
-      twinkleAt = T;
-      for (let i = 0; i < 4; i++) { const L = layers[1 + (i % 2)]; if (!L.wins.length) continue; const w = pick(L.wins); w.on = !w.on; L.x.clearRect(w.x, w.y, w.w, w.h); L.x.fillStyle = L.depth === 1 ? '#3a3570' : '#1b1c45'; L.x.fillRect(w.x, w.y, w.w, w.h); paintWin(L.x, w); }
-    }
-    layers.forEach((L, i) => { const off = -L.pad + mx * (4 + i * 8); x.drawImage(L.c, off, 0, L.c.width / dpr, G); if (i === 1) drawBeacons(T, off); });
-    // haze where the city meets the water
-    const hz = x.createLinearGradient(0, G - H * .12, 0, G); hz.addColorStop(0, 'rgba(255,170,140,0)'); hz.addColorStop(1, 'rgba(255,170,140,.22)');
-    x.fillStyle = hz; x.fillRect(0, G - H * .12, W, H * .12);
-    if (tower) x.drawImage(tower.c, W - tower.w + 10 + mx * 18, G - tower.h, tower.w, tower.h);
-    // water: the scene above, mirrored and rippled
-    const depth = H - G;
-    x.fillStyle = '#121638'; x.fillRect(0, G, W, depth);
-    for (let y = 0; y < depth; y += 2) {
-      const src = G - 2 - y * 1.3; if (src < 0) break;
-      const off = Math.sin(y * .22 + T * 2.2) * (1 + y * .06);
-      x.globalAlpha = .55 - (y / depth) * .35;
-      x.drawImage(cv, 0, src * dpr, W * dpr, 2 * dpr, off, G + y, W, 2);
-    }
-    x.globalAlpha = 1;
-    const wt = x.createLinearGradient(0, G, 0, H); wt.addColorStop(0, 'rgba(40,40,110,.15)'); wt.addColorStop(1, 'rgba(8,10,30,.7)');
-    x.fillStyle = wt; x.fillRect(0, G, W, depth);
-    x.fillStyle = 'rgba(255,220,190,.55)'; x.fillRect(0, G, W, 1);
-    // glint of the sun on the water
-    for (let i = 0; i < 9; i++) { const gy = G + 4 + i * (depth / 10), gw = 30 + i * 10 + Math.sin(T * 3 + i) * 8; x.fillStyle = `rgba(255,214,170,${.35 - i * .03})`; x.fillRect(sx - gw / 2 + Math.sin(T * 2 + i) * 3, gy, gw, 1.5); }
-  }
-  function drawBeacons(T, off) {
-    for (const b of beacons) { const on = Math.sin(T * 2.4 + b.p) > .55; if (!on) continue; ctx.fillStyle = 'rgba(255,80,80,.95)'; ctx.beginPath(); ctx.arc(b.x + off, b.y, 1.8, 0, 7); ctx.fill(); }
-  }
-  const onMove = e => { const r = cv.getBoundingClientRect(); tmx = ((e.clientX - r.left) / r.width - .5) * 2; };
-  const ro = new ResizeObserver(() => { build(); draw(performance.now() / 1000, 0); });
-  ro.observe(cv);
-  const io = new IntersectionObserver(es => { visible = es[0].isIntersecting; }); io.observe(cv);
-  cv.parentElement.addEventListener('pointermove', onMove);
-  build(); draw(0, 0);
-  if (!reduce) raf = requestAnimationFrame(frame);
-  return { destroy() { dead = true; cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); } };
+// ---------- hero photo: slow drift plus a little parallax under the pointer ----------
+function bindPhoto(sec) {
+  const img = sec && sec.querySelector('.dusk-photo'); if (!img) return;
+  const done = () => sec.classList.add('loaded');
+  if (img.complete && img.naturalWidth) done(); else { img.addEventListener('load', done); img.addEventListener('error', () => sec.classList.add('noimg')); }
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let tx = 0, ty = 0, x = 0, y = 0, raf = 0;
+  const step = () => { x += (tx - x) * .08; y += (ty - y) * .08; img.style.translate = `${x.toFixed(2)}px ${y.toFixed(2)}px`; if (Math.abs(tx - x) + Math.abs(ty - y) > .05) raf = requestAnimationFrame(step); else raf = 0; };
+  sec.addEventListener('pointermove', e => { const r = sec.getBoundingClientRect(); tx = -((e.clientX - r.left) / r.width - .5) * 22; ty = -((e.clientY - r.top) / r.height - .5) * 14; if (!raf) raf = requestAnimationFrame(step); });
+  sec.addEventListener('pointerleave', () => { tx = 0; ty = 0; if (!raf) raf = requestAnimationFrame(step); });
 }
 function countUp(root) {
   $$('[data-count]', root).forEach(el => {

@@ -23,4 +23,4 @@ python3 -m http.server 8000
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT for the code. See [LICENSE](LICENSE). The hero photo is CC BY-SA 4.0; see [CREDITS.md](CREDITS.md).
