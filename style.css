@@ -578,3 +578,6 @@ tr.xdetail.open .xin { visibility: visible; transition: opacity .3s, padding .38
 .face.back { visibility: hidden; transition: visibility 0s .3s; }
 .flip.flipped .face.back { visibility: visible; transition-delay: 0s; }
 .flip.flipped .face.front { visibility: hidden; transition: visibility 0s .3s; }
+.wart.wlogo { background: #fff; padding: 0; box-shadow: 0 6px 16px -8px rgba(0,0,0,.6), inset 0 0 0 1px rgba(20,26,51,.08); }
+.wart.wlogo svg { width: 70%; height: 70%; }
+.wart.sm.wlogo svg { width: 80%; height: 80%; }
