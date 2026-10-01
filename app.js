@@ -200,11 +200,18 @@ function graduate(L, c, t, silent) {
 }
 
 // ---------- persistence ----------
-function save() { store(KEY, S); store('sc.wallet', W); }
+function save() {
+  store(KEY, S);
+  if (W) { const book = store('sc.wallets') || {}; book[W.addr] = W; store('sc.wallets', book); }
+  store('sc.cur', W ? W.addr : null);
+}
 function load() {
   const s = store(KEY);
   S = s && s.v === 2 && s.coins ? s : freshLedger();
-  W = store('sc.wallet');
+  const old = store('sc.wallet'); // single-wallet format from the first build
+  if (old && old.addr) { const book = store('sc.wallets') || {}; old.kind = old.kind === 'injected' ? 'evm' : old.kind; old.name = old.name || (old.kind === 'demo' ? 'Demo wallet' : 'Browser wallet'); book[old.addr] = old; store('sc.wallets', book); store('sc.cur', old.addr); try { localStorage.removeItem('sc.wallet'); } catch (e) { /* storage blocked */ } }
+  const cur = store('sc.cur');
+  W = cur ? (store('sc.wallets') || {})[cur] || null : null;
 }
 
 // ---------- formatting ----------
@@ -295,6 +302,9 @@ function initHeader() {
   });
   document.addEventListener('click', e => {
     const s = e.target.closest('[data-star]'); if (s) { e.preventDefault(); e.stopPropagation(); toggleWatch(s.dataset.star); return; }
+    // a link to the page you are already on scrolls back to the top and refreshes it
+    const same = e.target.closest('a[href^="#"]');
+    if (same && !e.defaultPrevented) { const h = same.getAttribute('href'); const norm = x => (x || '').replace(/^#\/?/, '').replace(/\/$/, ''); if (norm(h) === norm(location.hash)) { e.preventDefault(); closeModal(); const m = $('.mobile-nav'); if (m) m.remove(); if (scrollY > 10) window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); render(); return; } }
     const md = e.target.closest('[data-modal]'); if (md) { md.dataset.modal === 'license' ? openLicense() : openStorage(); return; }
     const go = e.target.closest('[data-go]'); if (go && !e.target.closest('a,button:not([data-go])')) location.hash = go.dataset.go;
   });
@@ -302,7 +312,7 @@ function initHeader() {
 }
 function renderConnect() {
   const b = $('#connectBtn');
-  if (W) { b.className = 'btn ghost connect'; b.innerHTML = `<span class="dot"></span><span class="mono">${short(W.addr)}</span>`; }
+  if (W) { b.className = 'btn ghost connect'; b.innerHTML = `${W.icon ? wIcon(W.name, W.icon) : '<span class="dot"></span>'}<span class="mono">${short(W.addr)}</span>${W.kind === 'solana' ? '<span class="pill">SOL</span>' : ''}`; b.title = walletLabel(W); }
   else { b.className = 'btn primary connect'; b.textContent = 'Connect'; }
 }
 function toggleWatch(id) {
@@ -357,32 +367,210 @@ function openLicense() {
 function openStorage() {
   openModal('What we store', `<div class="prose"><p>Everything stays in this browser's local storage. Nothing is sent to a server.</p><ul>
   <li><code>sc.state.v2</code>: the demo ledger (coins, curves, trades, treasury).</li>
-  <li><code>sc.wallet</code>: your demo address and balances.</li>
+  <li><code>sc.wallets</code>, <code>sc.cur</code>: the addresses you connected, their demo balances and which one is active. Private keys never reach this page.</li>
   <li><code>sc.watch</code>, <code>sc.theme</code>, <code>sc.ccy</code>: your watchlist, theme and display currency.</li></ul>
   <p>Clearing site data or pressing <strong>Reset demo</strong> on the Account page wipes all of it.</p></div>`);
 }
 
+// ---------- wallets: real browser wallets (EIP-6963 for EVM, Phantom/Solflare for Solana) plus a demo wallet ----------
+// A real wallet signs you in with its address and can sign a message to prove you own it.
+// Trades still settle on the demo ledger, so no transaction is ever sent to your wallet.
+const evmFound = new Map();
+let activeProvider = null;
+const hooked = new WeakSet();
+window.addEventListener('eip6963:announceProvider', e => {
+  const d = e.detail; if (!d || !d.info || !d.provider) return;
+  evmFound.set(d.info.rdns || d.info.uuid, d);
+  if ($('#walletList')) paintWalletList();
+});
+function askWallets() { try { window.dispatchEvent(new Event('eip6963:requestProvider')); } catch (e) { /* old browser */ } }
+function legacyEvm() {
+  const e = window.ethereum; if (!e) return [];
+  const list = Array.isArray(e.providers) && e.providers.length ? e.providers : [e];
+  return list.map(p => {
+    const id = p.isPhantom ? 'app.phantom' : p.isRabby ? 'io.rabby' : p.isCoinbaseWallet ? 'com.coinbase.wallet' : p.isBraveWallet ? 'com.brave.wallet' : p.isMetaMask ? 'io.metamask' : 'injected';
+    const name = { 'app.phantom': 'Phantom', 'io.rabby': 'Rabby', 'com.coinbase.wallet': 'Coinbase Wallet', 'com.brave.wallet': 'Brave Wallet', 'io.metamask': 'MetaMask', injected: 'Browser wallet' }[id];
+    return { info: { rdns: id, name, icon: '' }, provider: p };
+  });
+}
+function evmWallets() {
+  const m = new Map(evmFound);
+  legacyEvm().forEach(w => { if (!m.has(w.info.rdns) && ![...m.values()].some(x => x.provider === w.provider)) m.set(w.info.rdns, w); });
+  return [...m.values()];
+}
+function solWallets() {
+  const out = [];
+  const ph = (window.phantom && window.phantom.solana) || (window.solana && window.solana.isPhantom ? window.solana : null);
+  if (ph) out.push({ id: 'sol:phantom', name: 'Phantom', provider: ph });
+  if (window.solflare && window.solflare.isSolflare) out.push({ id: 'sol:solflare', name: 'Solflare', provider: window.solflare });
+  if (window.backpack && window.backpack.isBackpack) out.push({ id: 'sol:backpack', name: 'Backpack', provider: window.backpack });
+  return out;
+}
+const KNOWN_WALLETS = [
+  { name: 'MetaMask', ids: ['io.metamask'], url: 'https://metamask.io/download/', c: '#f6851b', net: 'Ethereum and EVM chains' },
+  { name: 'Phantom', ids: ['app.phantom', 'sol:phantom'], url: 'https://phantom.com/download', c: '#ab9ff2', net: 'Solana, Ethereum, Base' },
+  { name: 'Coinbase Wallet', ids: ['com.coinbase.wallet'], url: 'https://www.coinbase.com/wallet/downloads', c: '#0052ff', net: 'Ethereum and EVM chains' },
+  { name: 'Rabby', ids: ['io.rabby'], url: 'https://rabby.io/', c: '#7084ff', net: 'EVM chains' },
+  { name: 'Solflare', ids: ['sol:solflare'], url: 'https://solflare.com/download', c: '#fc7227', net: 'Solana' },
+];
+const CHAINS = { '0x1': ['Ethereum', 'ETH'], '0x2105': ['Base', 'ETH'], '0xa4b1': ['Arbitrum', 'ETH'], '0xa': ['Optimism', 'ETH'], '0x89': ['Polygon', 'POL'], '0x38': ['BNB Chain', 'BNB'], '0xa86a': ['Avalanche', 'AVAX'], '0xaa36a7': ['Sepolia', 'ETH'], '0x14a34': ['Base Sepolia', 'ETH'] };
+const chainName = id => (CHAINS[id] || ['Chain ' + (id ? parseInt(id, 16) : '?'), 'ETH'])[0];
+function walletLabel(w) { if (!w) return ''; if (w.kind === 'demo') return 'Demo wallet'; if (w.kind === 'solana') return (w.name || 'Wallet') + ' · Solana'; return (w.name || 'Wallet') + ' · ' + chainName(w.chainId); }
+function wIcon(name, icon, c) {
+  if (icon && /^data:image\//.test(icon)) return `<span class="logo sm" style="background:transparent"><img src="${esc(icon)}" alt=""></span>`;
+  return `<span class="logo sm" style="background:${c || 'var(--surface-3)'}">${esc((name || 'W').slice(0, 1))}</span>`;
+}
+function walletErr(e, name) {
+  const code = e && (e.code || (e.error && e.error.code));
+  if (code === 4001 || /reject|denied|cancel/i.test(e && e.message || '')) return `You cancelled the request in ${name}.`;
+  if (code === -32002) return `${name} already has a request open. Open the extension to finish it.`;
+  return `${name} did not respond. Unlock it and try again.`;
+}
+
 function openConnect(then) {
-  const hasInjected = typeof window.ethereum !== 'undefined';
-  openModal('Connect a wallet', `<div class="wallets">
-    <button type="button" id="wDemo"><span class="logo sm" style="background:var(--accent);color:var(--accent-ink)">D</span><span><b>Demo wallet</b><br><span class="micro">Fresh address with ${money(START_USD)} of test funds</span></span></button>
-    <button type="button" id="wInj" ${hasInjected ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}><span class="logo sm" style="background:#f6851b">W</span><span><b>Browser wallet</b><br><span class="micro">${hasInjected ? 'Sign in with your address; trades settle on the demo ledger' : 'No injected wallet found in this browser'}</span></span></button>
-  </div><p class="micro" style="margin-top:12px">Sharecurve runs on a local demo network. No real funds move.</p>`);
-  $('#wDemo').onclick = () => { const r = mulberry(now() & 0xffffffff); setWallet(randAddr(r), 'demo'); then && then(); };
-  if (hasInjected) $('#wInj').onclick = async () => {
-    try { const a = await window.ethereum.request({ method: 'eth_requestAccounts' }); if (a && a[0]) { setWallet(a[0].toLowerCase(), 'injected'); then && then(); } }
-    catch (e) { toast(e && e.code === 4001 ? 'Connection cancelled in your wallet' : 'Your wallet did not respond. Try the demo wallet.'); }
+  askWallets();
+  openModal('Connect a wallet', `<div class="wallets" id="walletList"></div>
+    <p class="micro" style="margin-top:12px">Real wallets sign you in with your address. Trading on Sharecurve uses the demo ledger, so your wallet is never asked to send a transaction.</p>`);
+  connectThen = then || null;
+  paintWalletList();
+  setTimeout(() => { if ($('#walletList')) paintWalletList(); }, 350); // late announcers
+}
+let connectThen = null;
+function paintWalletList() {
+  const box = $('#walletList'); if (!box) return;
+  const evm = evmWallets(), sol = solWallets();
+  const seen = new Set([...evm.map(w => w.info.rdns), ...sol.map(w => w.id)]);
+  const rows = [];
+  sol.forEach((w, i) => rows.push(`<button type="button" data-wsol="${i}">${wIcon(w.name, '', (KNOWN_WALLETS.find(k => k.ids.includes(w.id)) || {}).c)}<span class="grow"><b>${esc(w.name)}</b><br><span class="micro">Solana · detected</span></span><span class="pill up">Connect</span></button>`));
+  evm.forEach((w, i) => rows.push(`<button type="button" data-wevm="${i}">${wIcon(w.info.name, w.info.icon, (KNOWN_WALLETS.find(k => k.ids.includes(w.info.rdns)) || {}).c)}<span class="grow"><b>${esc(w.info.name)}</b><br><span class="micro">${w.info.rdns === 'app.phantom' ? 'Ethereum and Base' : 'EVM'} · detected</span></span><span class="pill up">Connect</span></button>`));
+  KNOWN_WALLETS.filter(k => !k.ids.some(id => seen.has(id))).forEach(k => rows.push(`<a class="wallet-install" href="${k.url}" target="_blank" rel="noopener noreferrer">${wIcon(k.name, '', k.c)}<span class="grow"><b>${esc(k.name)}</b><br><span class="micro">${esc(k.net)} · not installed</span></span><span class="pill">Install ↗</span></a>`));
+  rows.push(`<button type="button" id="wDemo"><span class="logo sm" style="background:var(--accent);color:var(--accent-ink)">D</span><span class="grow"><b>Demo wallet</b><br><span class="micro">New address with ${money(START_USD)} of test funds, no extension needed</span></span><span class="pill">Try it</span></button>`);
+  box.innerHTML = rows.join('');
+  box.onclick = async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'wDemo') { setWallet(randAddr(mulberry((now() ^ (Math.random() * 1e9)) >>> 0)), { kind: 'demo', name: 'Demo wallet' }); return finishConnect(); }
+    if (b.dataset.wevm != null) return connectEvm(evm[+b.dataset.wevm], b);
+    if (b.dataset.wsol != null) return connectSol(sol[+b.dataset.wsol], b);
   };
 }
-function setWallet(addr, kind) {
-  const prev = store('sc.wallet');
-  W = prev && prev.addr === addr ? prev : { addr, kind, usd: START_USD, launched: [] };
-  save(); closeModal(); renderConnect(); toast('Connected ' + short(addr)); render();
+function finishConnect() { const t = connectThen; connectThen = null; if (t) t(); }
+function busy(b, on) { if (!b) return; b.disabled = on; const p = b.querySelector('.pill'); if (p) p.textContent = on ? 'Check your wallet…' : 'Connect'; }
+async function connectEvm(w, btn) {
+  const name = w.info.name; busy(btn, true);
+  try {
+    const acc = await w.provider.request({ method: 'eth_requestAccounts' });
+    if (!acc || !acc[0]) throw new Error('no account');
+    const chainId = await w.provider.request({ method: 'eth_chainId' }).catch(() => null);
+    activeProvider = w.provider; hookEvm(w);
+    setWallet(acc[0].toLowerCase(), { kind: 'evm', name, rdns: w.info.rdns, icon: /^data:image\//.test(w.info.icon || '') ? w.info.icon : '', chainId });
+    refreshNative(); finishConnect();
+  } catch (e) { busy(btn, false); toast(walletErr(e, name)); }
+}
+async function connectSol(w, btn) {
+  busy(btn, true);
+  try {
+    const r = await w.provider.connect();
+    const pk = (r && r.publicKey) || w.provider.publicKey; if (!pk) throw new Error('no key');
+    activeProvider = w.provider; hookSol(w);
+    setWallet(pk.toString(), { kind: 'solana', name: w.name, rdns: w.id, icon: '', chainId: null });
+    finishConnect();
+  } catch (e) { busy(btn, false); toast(walletErr(e, w.name)); }
+}
+function hookEvm(w) {
+  const p = w.provider; if (hooked.has(p) || !p.on) return; hooked.add(p);
+  p.on('accountsChanged', a => {
+    if (!W || W.kind !== 'evm' || activeProvider !== p) return;
+    if (!a || !a.length) return dropWallet(`${w.info.name} disconnected`);
+    if (a[0].toLowerCase() !== W.addr) { setWallet(a[0].toLowerCase(), { kind: 'evm', name: W.name, rdns: W.rdns, icon: W.icon, chainId: W.chainId }, true); toast('Switched to ' + short(W.addr)); refreshNative(); }
+  });
+  p.on('chainChanged', id => { if (!W || activeProvider !== p) return; W.chainId = id; save(); refreshNative(); renderConnect(); toast('Network: ' + chainName(id)); });
+}
+function hookSol(w) {
+  const p = w.provider; if (hooked.has(p) || !p.on) return; hooked.add(p);
+  p.on('accountChanged', pk => { if (!W || activeProvider !== p) return; if (!pk) return dropWallet(`${w.name} disconnected`); setWallet(pk.toString(), { kind: 'solana', name: w.name, rdns: w.id }, true); toast('Switched to ' + short(W.addr)); });
+  p.on('disconnect', () => { if (W && activeProvider === p) dropWallet(`${w.name} disconnected`); });
+}
+async function refreshNative() {
+  if (!W || W.kind !== 'evm' || !activeProvider) return;
+  try {
+    const hex = await activeProvider.request({ method: 'eth_getBalance', params: [W.addr, 'latest'] });
+    const wei = BigInt(hex);
+    W.native = { v: Number(wei / 10n ** 12n) / 1e6, sym: (CHAINS[W.chainId] || [0, 'ETH'])[1] };
+    save(); if (routeParts()[0] === 'account') render(); if ($('#natBal')) $('#natBal').textContent = fmtNative();
+  } catch (e) { W.native = null; }
+}
+const fmtNative = () => W && W.native ? W.native.v.toLocaleString('en-US', { maximumFractionDigits: 5 }) + ' ' + W.native.sym : 'Unavailable';
+async function signIn() {
+  if (!W || W.kind === 'demo' || !activeProvider) return toast('Connect a real wallet to sign in.');
+  const msg = `Sign in to Sharecurve (demo network)\n\nAddress: ${W.addr}\nNonce: ${Math.random().toString(36).slice(2, 10)}\nIssued: ${new Date().toISOString()}\n\nThis signature costs nothing and does not send a transaction.`;
+  try {
+    let sig;
+    if (W.kind === 'evm') {
+      const hex = '0x' + Array.from(new TextEncoder().encode(msg)).map(b => b.toString(16).padStart(2, '0')).join('');
+      sig = await activeProvider.request({ method: 'personal_sign', params: [hex, W.addr] });
+    } else {
+      const r = await activeProvider.signMessage(new TextEncoder().encode(msg), 'utf8');
+      const bytes = r && (r.signature || r);
+      sig = Array.from(bytes || []).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    if (!sig) throw new Error('empty');
+    W.signed = { at: now(), sig: String(sig).slice(0, 18) };
+    save(); toast('Signed in with your wallet'); closeModal(); render(); renderConnect();
+  } catch (e) { toast(walletErr(e, W.name || 'Your wallet')); }
+}
+function walletBook() { return store('sc.wallets') || {}; }
+function setWallet(addr, meta, quiet) {
+  const book = walletBook();
+  W = Object.assign(book[addr] || { addr, usd: START_USD, launched: [] }, meta, { addr });
+  if (W.kind === 'demo') activeProvider = null;
+  save(); renderConnect();
+  if (!quiet) { closeModal(); toast('Connected ' + short(addr)); }
+  render();
+}
+async function dropWallet(msg) {
+  const p = activeProvider, kind = W && W.kind;
+  W = null; activeProvider = null; save(); renderConnect(); render();
+  if (msg) toast(msg);
+  try { if (p && kind === 'solana' && p.disconnect) await p.disconnect(); if (p && kind === 'evm') await p.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }); } catch (e) { /* not every wallet supports revoking */ }
 }
 function openAccountMenu() {
-  openModal('Wallet', `<div class="kv"><span>Address</span><span>${short(W.addr)}</span></div><div class="kv"><span>Type</span><span>${W.kind === 'demo' ? 'Demo wallet' : 'Browser wallet'}</span></div><div class="kv"><span>Cash</span><span>${money(W.usd)}</span></div>
-  <div class="bar" style="margin:14px 0 0"><a class="btn ghost" href="#/account" data-close>Open account</a><button class="btn ghost" id="discBtn" type="button">Disconnect</button></div>`);
-  $('#discBtn').onclick = () => { W = null; store('sc.wallet', null); closeModal(); renderConnect(); toast('Disconnected'); render(); };
+  const real = W.kind !== 'demo';
+  openModal('Wallet', `<div class="row" style="display:flex;gap:10px;align-items:center;margin-bottom:8px">${wIcon(W.name, W.icon, W.kind === 'demo' ? 'var(--accent)' : '')}<div><b>${esc(W.name || 'Wallet')}</b><div class="micro mono" style="word-break:break-all">${esc(W.addr)}</div></div></div>
+  <div class="kv"><span>Network</span><span>${esc(walletLabel(W))}</span></div>
+  ${W.kind === 'evm' ? `<div class="kv"><span>On-chain balance</span><span id="natBal">${fmtNative()}</span></div>` : ''}
+  <div class="kv"><span>Demo cash</span><span>${money(W.usd)}</span></div>
+  ${real ? `<div class="kv"><span>Signed in</span><span>${W.signed ? 'Yes, ' + ago(W.signed.at) + ' ago' : 'Not yet'}</span></div>` : ''}
+  <div class="bar" style="margin:14px 0 0">${real && activeProvider ? `<button class="btn primary" id="signBtn" type="button">${W.signed ? 'Sign again' : 'Sign in with wallet'}</button>` : ''}<button class="btn ghost" id="copyAddr" type="button">Copy address</button><a class="btn ghost" href="#/account" data-close>Open account</a><button class="btn ghost" id="discBtn" type="button">Disconnect</button></div>`);
+  if ($('#signBtn')) $('#signBtn').onclick = signIn;
+  $('#copyAddr').onclick = () => copyText(W.addr, 'Address copied');
+  $('#discBtn').onclick = () => { closeModal(); dropWallet('Disconnected'); };
+  if (W.kind === 'evm') refreshNative();
+}
+function copyText(t, ok) { try { navigator.clipboard.writeText(t).then(() => toast(ok), () => toast(t)); } catch (e) { toast(t); } }
+// reconnect a real wallet after a reload, without opening a prompt
+async function resumeWallet() {
+  if (!W || W.kind === 'demo') return;
+  askWallets();
+  await new Promise(r => setTimeout(r, 400));
+  try {
+    if (W.kind === 'evm') {
+      const w = evmWallets().find(x => x.info.rdns === W.rdns) || evmWallets()[0];
+      if (!w) return dropWallet();
+      const acc = await w.provider.request({ method: 'eth_accounts' });
+      if (!acc || !acc.length) return dropWallet();
+      activeProvider = w.provider; hookEvm(w);
+      W.chainId = await w.provider.request({ method: 'eth_chainId' }).catch(() => W.chainId);
+      if (acc[0].toLowerCase() !== W.addr) setWallet(acc[0].toLowerCase(), { kind: 'evm', name: W.name, rdns: W.rdns, icon: W.icon, chainId: W.chainId }, true);
+      refreshNative(); renderConnect();
+    } else if (W.kind === 'solana') {
+      const w = solWallets().find(x => x.id === W.rdns); if (!w) return dropWallet();
+      const r = await w.provider.connect({ onlyIfTrusted: true });
+      const pk = ((r && r.publicKey) || w.provider.publicKey || '').toString();
+      if (!pk) return dropWallet();
+      activeProvider = w.provider; hookSol(w);
+      if (pk !== W.addr) setWallet(pk, { kind: 'solana', name: W.name, rdns: W.rdns }, true);
+    }
+  } catch (e) { dropWallet(); }
 }
 
 // ---------- find ----------
@@ -698,12 +886,14 @@ function account(v) {
   const pos = Object.values(S.coins).filter(c => (c.holders[W.addr] || 0) > 0).map(c => { const b = c.holders[W.addr]; const val2 = sellValueUsd(c, b); return { c, b, val: val2 }; });
   const total = pos.reduce((s, p) => s + p.val, 0);
   const mine = (W.launched || []).map(id => S.coins[id]).filter(Boolean);
-  v.innerHTML = `<div class="page-head"><span class="eyebrow">Account · ${W.kind === 'demo' ? 'demo wallet' : 'browser wallet'}</span><h1 class="mono" style="font-size:clamp(22px,4vw,34px);word-break:break-all">${esc(W.addr)}</h1></div>
+  v.innerHTML = `<div class="page-head"><span class="eyebrow">Account · ${esc(walletLabel(W))}${W.signed ? ' · signed in' : ''}</span><h1 class="mono" style="font-size:clamp(22px,4vw,34px);word-break:break-all">${esc(W.addr)}</h1></div>
   <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:26px">
     <div class="stat"><div class="eyebrow">Cash</div><div class="v">${money(W.usd)}</div></div>
     <div class="stat"><div class="eyebrow">Positions (if sold now)</div><div class="v">${money(total)}</div></div>
     <div class="stat"><div class="eyebrow">Net vs start</div><div class="v ${cls(W.usd + total - START_USD)}">${money(W.usd + total - START_USD)}</div></div>
+    ${W.kind === 'evm' ? `<div class="stat"><div class="eyebrow">On-chain · ${esc(chainName(W.chainId))}</div><div class="v">${fmtNative()}</div></div>` : ''}
   </div>
+  <div class="bar" style="margin:-10px 0 24px">${W.kind !== 'demo' ? `<button class="btn primary" id="accSign" type="button">${W.signed ? 'Signed in · sign again' : 'Sign in with wallet'}</button>` : ''}<button class="btn ghost" id="accCopy" type="button">Copy address</button><button class="btn ghost" id="accDisc" type="button">Disconnect</button></div>
   <div class="shead"><h2>Positions</h2></div>
   ${pos.length ? `<div class="tbl-wrap"><table><thead><tr><th>Coin</th><th class="r">Balance</th><th class="r">Price</th><th class="r">Sell value</th></tr></thead><tbody>${pos.map(p => `<tr class="link" data-go="#/coin/${p.c.id}"><td><div class="cell-co">${logo(p.c, 'sm')}<b>${esc(p.c.sym)}</b><span class="micro">/ ${p.c.co}</span></div></td><td class="r mono">${tok(p.b)}</td><td class="r mono">${money(priceUsd(p.c), { co: p.c.co })}</td><td class="r mono">${money(p.val)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No positions yet. <a class="btn ghost" href="#/">Find a coin</a></div>`}
   <div class="shead"><h2>Your launches</h2></div>
@@ -711,8 +901,11 @@ function account(v) {
   ${mine.length ? `<p class="micro" style="margin-top:10px">Creator tax earned: <b class="mono">${money(mine.reduce((s, c) => s + c.creatorEarned, 0))}</b></p>` : ''}
   <div class="shead"><h2>Demo controls</h2></div>
   <div class="panel"><p class="hint">Reset wipes the whole demo ledger and your wallet in this browser, then rebuilds the starting board.</p><div class="bar" style="margin:12px 0 0"><button class="btn ghost" id="rst1" type="button">Reset demo</button><span id="rstC" hidden><button class="btn primary" id="rst2" type="button" style="background:var(--down)">Yes, wipe everything</button></span></div></div>`;
+  if ($('#accSign')) $('#accSign').onclick = () => activeProvider ? signIn() : resumeWallet().then(() => activeProvider ? signIn() : toast('Open your wallet extension and connect again.'));
+  $('#accCopy').onclick = () => copyText(W.addr, 'Address copied');
+  $('#accDisc').onclick = () => dropWallet('Disconnected');
   $('#rst1').onclick = () => { $('#rstC').hidden = false; $('#rst1').textContent = 'Keep my data'; $('#rst1').onclick = () => render(); };
-  $('#rst2').onclick = () => { S = freshLedger(); W = null; ui.watch = []; store('sc.watch', []); save(); renderConnect(); toast('Demo reset'); location.hash = '#/'; render(); };
+  $('#rst2').onclick = () => { S = freshLedger(); W = null; activeProvider = null; ui.watch = []; store('sc.wallets', {}); store('sc.watch', []); save(); renderConnect(); toast('Demo reset'); location.hash = '#/'; render(); };
 }
 function sellValueUsd(c, b) { const q = quoteSell(c, b); return Math.max(0, q.out) * S.stocks[c.co].px; }
 
@@ -802,24 +995,26 @@ function coin(v, id) {
       ${c.desc ? `<p class="hint" style="margin-top:10px">${esc(c.desc)}</p>` : ''}</div>
   </div></div>`;
   const amt = $('#amt');
-  const setSide = s => { side = s; $$('#sideSeg button').forEach(b => { b.classList.toggle('on', b.dataset.side === s); }); $('#tradeBtn').textContent = (s === 'buy' ? 'Buy ' : 'Sell ') + c.sym; $('#amtUnit').textContent = s === 'buy' ? 'USD' : c.sym; $('#amtLbl').textContent = s === 'buy' ? 'You pay' : 'You sell'; amt.value = ''; paintTrade(); };
+  const setSide = s => { if (s === side && amt.value === '') { amt.focus(); return; } side = s; $$('#sideSeg button').forEach(b => { b.classList.toggle('on', b.dataset.side === s); }); $('#tradeBtn').textContent = (s === 'buy' ? 'Buy ' : 'Sell ') + c.sym; $('#amtUnit').textContent = s === 'buy' ? 'USD' : c.sym; $('#amtLbl').textContent = s === 'buy' ? 'You pay' : 'You sell'; amt.value = ''; paintTrade(); };
   $('#sideSeg').onclick = e => { const b = e.target.closest('button'); if (b) setSide(b.dataset.side); };
   $('#tfSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; chartTf = +b.dataset.s; store('sc.tf', chartTf); $$('#tfSeg button').forEach(x => x.classList.toggle('on', x === b)); feedChart(c, true); };
-  $('#quick').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (side === 'buy') amt.value = b.dataset.v; else { const hb = (W && c.holders[W.addr]) || 0; amt.value = +b.dataset.v === 1 ? String(hb) : String(Math.floor(hb * +b.dataset.v)); } paintTrade(); };
+  $('#quick').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (side === 'buy') amt.value = b.dataset.v; else { const hb = (W && c.holders[W.addr]) || 0; if (!W) return openConnect(); if (!hb) { $('#tErr').textContent = `You hold no ${c.sym} yet. Switch to Buy to get some.`; return; } amt.value = +b.dataset.v === 1 ? String(hb) : String(Math.floor(hb * +b.dataset.v)); } paintTrade(); };
   amt.oninput = () => paintTrade();
   $('#slipSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; ui.slip = +b.dataset.v; store('sc.slip', ui.slip); $$('#slipSeg button').forEach(x => x.classList.toggle('on', x === b)); paintTrade(); };
   $('#lowTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; lowTab = b.dataset.t; $$('#lowTabs button').forEach(x => x.classList.toggle('on', x === b)); $('#lowTrades').hidden = lowTab !== 'trades'; $('#lowHolders').hidden = lowTab !== 'holders'; refreshCoin(c); };
   $('#shareBtn').onclick = () => { const url = location.href; try { navigator.clipboard.writeText(url).then(() => toast('Link copied'), () => toast(url)); } catch (e2) { toast(url); } };
-  coinPaint = () => { if (document.activeElement !== $('#tradeBtn')) paintTrade(); };
+  coinPaint = () => { if (document.activeElement !== $('#tradeBtn')) paintTrade(true); };
+  let quickSide = null;
   let quoted = null;
   amt.onkeydown = e => { if (e.key === 'Enter') $('#tradeBtn').click(); };
-  function paintTrade() {
+  function paintTrade(tick) {
     const px = S.stocks[c.co].px;
     const bal = W ? (side === 'buy' ? W.usd : c.holders[W.addr] || 0) : 0;
     $('#balLbl').textContent = W ? 'Balance ' + (side === 'buy' ? money(bal) : tok(bal)) : '';
-    $('#quick').innerHTML = side === 'buy' ? [25, 100, 500, 1000].map(n => `<button type="button" data-v="${n}">$${n}</button>`).join('') : [[0.25, '25%'], [0.5, '50%'], [1, 'Max']].map(([n, l]) => `<button type="button" data-v="${n}">${l}</button>`).join('');
+    if (quickSide !== side) $('#quick').innerHTML = side === 'buy' ? [25, 100, 500, 1000].map(n => `<button type="button" data-v="${n}">$${n}</button>`).join('') : [[0.25, '25%'], [0.5, '50%'], [1, 'Max']].map(([n, l]) => `<button type="button" data-v="${n}">${l}</button>`).join('');
     const n = parseFloat(amt.value) || 0;
-    const err = $('#tErr'); err.textContent = '';
+    quickSide = side;
+    const err = $('#tErr'); if (!tick) err.textContent = '';
     let q = null;
     if (n > 0) q = side === 'buy' ? quoteBuy(c, n / px) : quoteSell(c, n);
     quoted = q ? { side, n, out: q.out } : null;
@@ -980,6 +1175,7 @@ function boot() {
   renderTape();
   render();
   save();
+  resumeWallet();
   setInterval(loop, 2200);
   window.addEventListener('resize', () => { clearTimeout(boot.rt); boot.rt = setTimeout(() => { drawSparks(); if ($('#curveCv')) drawCurve($('#curveCv')); }, 120); });
   document.addEventListener('keydown', e => { const cd = e.target.closest && e.target.closest('.card[data-go]'); if (cd && e.key === 'Enter') location.hash = cd.dataset.go; });

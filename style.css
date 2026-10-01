@@ -7,7 +7,7 @@
   --teal: #8fb6ff; --teal-wash: rgba(143,182,255,.14);
   --up: #5ee0a6; --up-wash: rgba(94,224,166,.13); --down: #ff7a8a; --down-wash: rgba(255,122,138,.14);
   --shadow: 0 30px 70px -36px rgba(0,0,0,.9);
-  --veil: linear-gradient(180deg, rgba(7,10,26,.38) 0%, rgba(7,10,26,.5) 40%, rgba(7,10,26,.78) 100%);
+  --veil: linear-gradient(180deg, rgba(3,6,22,.5) 0%, rgba(4,7,24,.64) 40%, rgba(3,5,18,.86) 100%);
   --lift: 0 2px 18px rgba(4,6,20,.55);
   --display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
   --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -112,9 +112,10 @@ main { padding-block: 24px 80px; min-height: 70vh; }
 /* page background: a photo of Marina Bay at dusk, fixed behind every section */
 .page-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: linear-gradient(180deg, #1c2a63, #3c4f8f 55%, #1a2347); pointer-events: none; }
 .page-bg img { position: absolute; inset: -30px; width: calc(100% + 60px); height: calc(100% + 60px); max-width: none; object-fit: cover; object-position: 60% 55%; scale: 1.04; filter: blur(16px); transition: filter 1.2s ease, opacity 1.2s ease; animation: drift 40s ease-in-out infinite alternate; }
-.page-bg.loaded img { filter: none; }
+.page-bg.loaded img { filter: brightness(.66) contrast(1.12) saturate(1.15); }
+.page-bg::before { content: ""; position: absolute; inset: 0; z-index: 1; background: radial-gradient(120% 70% at 50% 0%, rgba(20,30,90,.45), transparent 70%); mix-blend-mode: multiply; }
 .page-bg.noimg img { opacity: 0; }
-.page-bg::after { content: ""; position: absolute; inset: 0; background: var(--veil); transition: background .4s; }
+.page-bg::after { content: ""; position: absolute; inset: 0; z-index: 2; background: var(--veil); transition: background .4s; }
 @keyframes drift { from { scale: 1.04; object-position: 56% 55%; } to { scale: 1.12; object-position: 66% 60%; } }
 
 /* hero: no frame, the content sits straight on the photo */
@@ -289,7 +290,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .find-row .grow { flex: 1; min-width: 0; }
 .wallets { display: flex; flex-direction: column; gap: 8px; }
 .wallets button { display: flex; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--rule-2); background: var(--surface-2); padding: 12px; border-radius: 10px; }
-.wallets button:hover { border-color: var(--accent); }
+.wallets button:hover, .wallets a:hover { border-color: var(--accent); }
+.wallets a { display: flex; align-items: center; gap: 12px; text-align: left; border: 1px dashed var(--rule-2); background: transparent; padding: 12px; border-radius: 10px; }
+.wallets .grow { flex: 1; min-width: 0; }
+.wallets button[disabled] { opacity: .7; cursor: progress; }
+.btn.connect .logo.sm { width: 20px; height: 20px; border-radius: 6px; font-size: 10px; }
 
 /* toast */
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 90; max-width: calc(100vw - 32px); }

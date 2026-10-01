@@ -21,6 +21,14 @@ python3 -m http.server 8000
 - Pairs, Unclaimed apps, Scoreboard (return vs. the paired stock), Watchlist, Two-legs calculator, Account, Treasury, Docs, Security
 - Find palette (`/`), currency switch (USD / EUR / GBP / JPY / stock shares), dark and light themes, scrolling ticker tape, MIT license modal
 
+## Wallets
+
+- **EVM:** MetaMask, Phantom (EVM), Coinbase Wallet, Rabby, Brave and any wallet that announces itself through EIP-6963, with `window.ethereum` as a fallback.
+- **Solana:** Phantom, Solflare and Backpack.
+- **What a connected wallet does:** shows your address, network and native balance (EVM). You can sign a free message to sign in. The site reconnects silently after a reload and follows account and network switches.
+- **Trades stay on the demo ledger,** so a wallet is never asked to send a transaction.
+- **Hosting:** wallet extensions inject into normal pages. If you embed the site inside a sandboxed iframe, the extension may not appear there, so host it on its own domain for real wallets.
+
 ## License
 
 MIT for the code. See [LICENSE](LICENSE). The background photo is CC BY-SA 4.0; see [CREDITS.md](CREDITS.md).
