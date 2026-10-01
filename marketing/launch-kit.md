@@ -9,20 +9,24 @@
 ## Tweet (English)
 $KRUV is live 🚀
 
-Kruv is a launchpad where every coin is quoted in the stock behind its app. Instagram trades against $META, YouTube against $GOOGL.
+Kruv is a launchpad where every coin trades against the stock behind its app: Instagram vs $META, YouTube vs $GOOGL.
 
-Every buy puts the stock into the curve. Sell out the curve and liquidity locks forever.
+Every buy puts the stock into the curve. When it sells out, liquidity locks forever.
 
 CA: [CA]
 
 ## Tweet (Spanish)
 $KRUV ya está en vivo 🚀
 
-Kruv es un launchpad donde cada moneda cotiza en la acción de la empresa detrás de su app. Instagram contra $META, YouTube contra $GOOGL.
+Kruv es un launchpad donde cada moneda cotiza contra la acción detrás de su app: Instagram vs $META, YouTube vs $GOOGL.
 
-Cada compra mete la acción en la curva. Cuando se agota, la liquidez queda bloqueada para siempre.
+Cada compra mete la acción en la curva. Al agotarse, la liquidez se bloquea para siempre.
 
 CA: [CA]
 
 ## Bio
 Coins quoted in the stock behind the app 🛰️ Every buy puts the stock in the curve. Liquidity locks at graduation. $KRUV · CA 👇
+
+Spanish bio: Monedas que cotizan en la acción detrás de la app 🛰️ Cada compra mete la acción en la curva. Liquidez bloqueada al graduar. $KRUV
+
+All texts fit X's limits with a 44-character Solana contract address in place of [CA] (tweets ≤ 280, bio ≤ 160).
