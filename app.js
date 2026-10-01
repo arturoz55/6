@@ -381,7 +381,7 @@ const hooked = new WeakSet();
 window.addEventListener('eip6963:announceProvider', e => {
   const d = e.detail; if (!d || !d.info || !d.provider) return;
   evmFound.set(d.info.rdns || d.info.uuid, d);
-  if ($('#walletList')) paintWalletList();
+  if ($('#wm') && wmState.view === 'list') wmShow('list', true);
 });
 function askWallets() { try { window.dispatchEvent(new Event('eip6963:requestProvider')); } catch (e) { /* old browser */ } }
 function legacyEvm() {
@@ -406,76 +406,237 @@ function solWallets() {
   if (window.backpack && window.backpack.isBackpack) out.push({ id: 'sol:backpack', name: 'Backpack', provider: window.backpack });
   return out;
 }
+// Catalog of wallets we know how to talk to. Icons are our own abstract marks; when a wallet is
+// installed we show the icon it announces about itself instead.
 const KNOWN_WALLETS = [
-  { name: 'MetaMask', ids: ['io.metamask'], url: 'https://metamask.io/download/', c: '#f6851b', net: 'Ethereum and EVM chains' },
-  { name: 'Phantom', ids: ['app.phantom', 'sol:phantom'], url: 'https://phantom.com/download', c: '#ab9ff2', net: 'Solana, Ethereum, Base' },
-  { name: 'Coinbase Wallet', ids: ['com.coinbase.wallet'], url: 'https://www.coinbase.com/wallet/downloads', c: '#0052ff', net: 'Ethereum and EVM chains' },
-  { name: 'Rabby', ids: ['io.rabby'], url: 'https://rabby.io/', c: '#7084ff', net: 'EVM chains' },
-  { name: 'Solflare', ids: ['sol:solflare'], url: 'https://solflare.com/download', c: '#fc7227', net: 'Solana' },
+  { key: 'metamask', name: 'MetaMask', ids: ['io.metamask'], chains: ['evm'], url: 'https://metamask.io/download/', c: ['#ff9a3c', '#e8590c'], net: 'Ethereum and EVM chains', deep: u => 'https://metamask.app.link/dapp/' + u.replace(/^https?:\/\//, '') },
+  { key: 'phantom', name: 'Phantom', ids: ['app.phantom', 'sol:phantom'], chains: ['sol', 'evm'], url: 'https://phantom.com/download', c: ['#b9a8ff', '#6f5ce0'], net: 'Solana, Ethereum, Base', deep: u => 'https://phantom.app/ul/browse/' + encodeURIComponent(u) + '?ref=' + encodeURIComponent(location.origin) },
+  { key: 'coinbase', name: 'Coinbase Wallet', ids: ['com.coinbase.wallet'], chains: ['evm'], url: 'https://www.coinbase.com/wallet/downloads', c: ['#4c8dff', '#0a3fd6'], net: 'Ethereum and EVM chains', deep: u => 'https://go.cb-w.com/dapp?cb_url=' + encodeURIComponent(u) },
+  { key: 'rabby', name: 'Rabby', ids: ['io.rabby'], chains: ['evm'], url: 'https://rabby.io/', c: ['#9aa6ff', '#5363e6'], net: 'EVM chains, desktop' },
+  { key: 'solflare', name: 'Solflare', ids: ['sol:solflare'], chains: ['sol'], url: 'https://solflare.com/download', c: ['#ffd25a', '#f26b1d'], net: 'Solana', deep: u => 'https://solflare.com/ul/v1/browse/' + encodeURIComponent(u) + '?ref=' + encodeURIComponent(location.origin) },
+  { key: 'backpack', name: 'Backpack', ids: ['sol:backpack'], chains: ['sol'], url: 'https://backpack.app/download', c: ['#ff6b6b', '#c92a3a'], net: 'Solana' },
+  { key: 'brave', name: 'Brave Wallet', ids: ['com.brave.wallet'], chains: ['evm', 'sol'], url: 'https://brave.com/wallet/', c: ['#ff8a50', '#d9480f'], net: 'Built into Brave' },
 ];
 const CHAINS = { '0x1': ['Ethereum', 'ETH'], '0x2105': ['Base', 'ETH'], '0xa4b1': ['Arbitrum', 'ETH'], '0xa': ['Optimism', 'ETH'], '0x89': ['Polygon', 'POL'], '0x38': ['BNB Chain', 'BNB'], '0xa86a': ['Avalanche', 'AVAX'], '0xaa36a7': ['Sepolia', 'ETH'], '0x14a34': ['Base Sepolia', 'ETH'] };
 const chainName = id => (CHAINS[id] || ['Chain ' + (id ? parseInt(id, 16) : '?'), 'ETH'])[0];
 function walletLabel(w) { if (!w) return ''; if (w.kind === 'demo') return 'Demo wallet'; if (w.kind === 'solana') return (w.name || 'Wallet') + ' · Solana'; return (w.name || 'Wallet') + ' · ' + chainName(w.chainId); }
+
+// drawn marks, one per wallet
+const ART = {
+  metamask: '<path d="M10 30 L16 12 L24 22 L32 12 L38 30" fill="none" stroke="#fff" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"/><path d="M16 12 L24 30 L32 12" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="35" r="2.2" fill="#fff"/>',
+  phantom: '<path d="M30 11a13 13 0 1 0 7 22 10.5 10.5 0 1 1-7-22z" fill="#fff"/><path d="M33 14l1.2 3 3 1.2-3 1.2-1.2 3-1.2-3-3-1.2 3-1.2z" fill="#fff" opacity=".85"/>',
+  coinbase: '<ellipse cx="24" cy="30" rx="11" ry="4.5" fill="none" stroke="#fff" stroke-width="3"/><ellipse cx="24" cy="23" rx="11" ry="4.5" fill="none" stroke="#fff" stroke-width="3"/><ellipse cx="24" cy="16" rx="11" ry="4.5" fill="#fff"/>',
+  rabby: '<rect x="15" y="9" width="6" height="15" rx="3" fill="#fff"/><rect x="27" y="9" width="6" height="15" rx="3" fill="#fff"/><ellipse cx="24" cy="29" rx="12" ry="9" fill="#fff"/><circle cx="20" cy="28" r="1.6" fill="#5363e6"/><circle cx="28" cy="28" r="1.6" fill="#5363e6"/>',
+  solflare: '<circle cx="24" cy="24" r="6.5" fill="#fff"/><g stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M24 8v5M24 35v5M8 24h5M35 24h5M12.7 12.7l3.5 3.5M31.8 31.8l3.5 3.5M12.7 35.3l3.5-3.5M31.8 16.2l3.5-3.5"/></g>',
+  backpack: '<rect x="13" y="15" width="22" height="22" rx="6" fill="#fff"/><path d="M19 15v-2a5 5 0 0 1 10 0v2" fill="none" stroke="#fff" stroke-width="3"/><rect x="18" y="24" width="12" height="6" rx="2" fill="#c92a3a"/>',
+  brave: '<path d="M24 9c2 6 9 8 9 17a9 9 0 0 1-18 0c0-5 3-7 4-10 1 3 3 4 3 4 0-5 1-8 2-11z" fill="#fff"/>',
+  demo: '<path d="M24 9 l3.4 9.6 L37 22 l-9.6 3.4 L24 35 l-3.4 -9.6 L11 22 l9.6 -3.4z" fill="#fff"/><circle cx="35" cy="35" r="3" fill="#fff" opacity=".8"/><circle cx="13" cy="12" r="2" fill="#fff" opacity=".7"/>',
+  generic: '<rect x="11" y="15" width="26" height="19" rx="5" fill="none" stroke="#fff" stroke-width="3"/><rect x="27" y="21" width="10" height="7" rx="3" fill="#fff"/>',
+};
+function walletArt(key, size = 40, icon) {
+  if (icon && /^data:image\//.test(icon)) return `<span class="wart" style="width:${size}px;height:${size}px"><img src="${esc(icon)}" alt=""></span>`;
+  const k = KNOWN_WALLETS.find(x => x.key === key);
+  const c = key === 'demo' ? ['#ffc48f', '#e8743b'] : k ? k.c : ['#7a86b8', '#3d4775'];
+  const gid = 'wg-' + key + '-' + size;
+  return `<span class="wart" style="width:${size}px;height:${size}px"><svg viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c[0]}"/><stop offset="1" stop-color="${c[1]}"/></linearGradient></defs><rect width="48" height="48" rx="13" fill="url(#${gid})"/><rect x="1" y="1" width="46" height="46" rx="12" fill="none" stroke="rgba(255,255,255,.25)"/>${ART[key] || ART.generic}</svg></span>`;
+}
 function wIcon(name, icon, c) {
-  if (icon && /^data:image\//.test(icon)) return `<span class="logo sm" style="background:transparent"><img src="${esc(icon)}" alt=""></span>`;
-  return `<span class="logo sm" style="background:${c || 'var(--surface-3)'}">${esc((name || 'W').slice(0, 1))}</span>`;
+  const k = KNOWN_WALLETS.find(x => x.name === name);
+  if (icon && /^data:image\//.test(icon)) return walletArt('', 20, icon).replace('class="wart"', 'class="wart sm"');
+  return walletArt(k ? k.key : name === 'Demo wallet' ? 'demo' : 'generic', 20).replace('class="wart"', 'class="wart sm"');
 }
 function walletErr(e, name) {
   const code = e && (e.code || (e.error && e.error.code));
-  if (code === 4001 || /reject|denied|cancel/i.test(e && e.message || '')) return `You cancelled the request in ${name}.`;
-  if (code === -32002) return `${name} already has a request open. Open the extension to finish it.`;
+  if (code === 4001 || /reject|denied|cancel/i.test(e && e.message || '')) return `You declined the request in ${name}. Nothing was shared.`;
+  if (code === -32002) return `${name} already has a request open. Click the ${name} icon in your browser's toolbar to finish it.`;
+  if (e && e.message === 'timeout') return `${name} didn't answer. It may be locked or the popup may be hidden behind this window.`;
   return `${name} did not respond. Unlock it and try again.`;
 }
 
+// ---------- the connect dialog ----------
+let connectThen = null, wmState = { q: '', chain: 'all', view: 'list', target: null, token: 0 };
+function catalogRows() {
+  const evm = evmWallets(), sol = solWallets();
+  const rows = KNOWN_WALLETS.map(k => ({ k, evm: evm.find(w => k.ids.includes(w.info.rdns)), sol: sol.find(w => k.ids.includes(w.id)) }));
+  // installed wallets we don't have in the catalog (EIP-6963 lets any wallet announce itself)
+  evm.filter(w => !KNOWN_WALLETS.some(k => k.ids.includes(w.info.rdns))).forEach(w => rows.push({ k: { key: 'generic', name: w.info.name, ids: [w.info.rdns], chains: ['evm'], net: 'EVM', url: '' }, evm: w, icon: w.info.icon }));
+  rows.forEach(r => { r.installed = !!(r.evm || r.sol); if (!r.icon && r.evm) r.icon = r.evm.info.icon; });
+  return rows;
+}
 function openConnect(then) {
   askWallets();
-  openModal('Connect a wallet', `<div class="wallets" id="walletList"></div>
-    <p class="micro" style="margin-top:12px">Real wallets sign you in with your address. Trading on Sharecurve uses the demo ledger, so your wallet is never asked to send a transaction.</p>`);
   connectThen = then || null;
-  paintWalletList();
-  setTimeout(() => { if ($('#walletList')) paintWalletList(); }, 350); // late announcers
+  wmState = { q: '', chain: store('sc.wmChain') || 'all', view: 'list', target: null, token: 0 };
+  openModal('Connect a wallet', `<div class="wm" id="wm">
+    <div class="mh"><div class="wm-title"><button class="icon-btn wm-back" id="wmBack" type="button" aria-label="Back" hidden>←</button><h3 id="wmH">Connect a wallet</h3></div><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+    <div class="wm-body" id="wmBody"></div>
+    <div class="wm-foot"><button class="foot-link" type="button" id="wmHelp">New to wallets?</button><span class="micro">Sharecurve never asks for your recovery phrase.</span></div>
+  </div>`, { raw: true });
+  $('#wmBack').onclick = () => wmShow('list');
+  $('#wmHelp').onclick = () => wmShow('help');
+  if (!openConnect.keys) openConnect.keys = true; document.addEventListener('keydown', e => {
+    if (!$('#wm') || !/ArrowDown|ArrowUp/.test(e.key)) return;
+    const rows = $$('#wm .wm-row'); const i = rows.indexOf(document.activeElement);
+    const n = e.key === 'ArrowDown' ? Math.min(rows.length - 1, i + 1) : Math.max(0, i - 1);
+    if (rows[n]) { e.preventDefault(); rows[n].focus(); }
+  });
+  wmShow('list');
+  setTimeout(() => { if (wmState.view === 'list' && $('#wm')) wmShow('list', true); }, 400); // wallets that announce late
 }
-let connectThen = null;
-function paintWalletList() {
-  const box = $('#walletList'); if (!box) return;
-  const evm = evmWallets(), sol = solWallets();
-  const seen = new Set([...evm.map(w => w.info.rdns), ...sol.map(w => w.id)]);
-  const rows = [];
-  sol.forEach((w, i) => rows.push(`<button type="button" data-wsol="${i}">${wIcon(w.name, '', (KNOWN_WALLETS.find(k => k.ids.includes(w.id)) || {}).c)}<span class="grow"><b>${esc(w.name)}</b><br><span class="micro">Solana · detected</span></span><span class="pill up">Connect</span></button>`));
-  evm.forEach((w, i) => rows.push(`<button type="button" data-wevm="${i}">${wIcon(w.info.name, w.info.icon, (KNOWN_WALLETS.find(k => k.ids.includes(w.info.rdns)) || {}).c)}<span class="grow"><b>${esc(w.info.name)}</b><br><span class="micro">${w.info.rdns === 'app.phantom' ? 'Ethereum and Base' : 'EVM'} · detected</span></span><span class="pill up">Connect</span></button>`));
-  KNOWN_WALLETS.filter(k => !k.ids.some(id => seen.has(id))).forEach(k => rows.push(`<a class="wallet-install" href="${k.url}" target="_blank" rel="noopener noreferrer">${wIcon(k.name, '', k.c)}<span class="grow"><b>${esc(k.name)}</b><br><span class="micro">${esc(k.net)} · not installed</span></span><span class="pill">Install ↗</span></a>`));
-  rows.push(`<button type="button" id="wDemo"><span class="logo sm" style="background:var(--accent);color:var(--accent-ink)">D</span><span class="grow"><b>Demo wallet</b><br><span class="micro">New address with ${money(START_USD)} of test funds, no extension needed</span></span><span class="pill">Try it</span></button>`);
-  box.innerHTML = rows.join('');
-  box.onclick = async e => {
-    const b = e.target.closest('button'); if (!b) return;
-    if (b.id === 'wDemo') { setWallet(randAddr(mulberry((now() ^ (Math.random() * 1e9)) >>> 0)), { kind: 'demo', name: 'Demo wallet' }); return finishConnect(); }
-    if (b.dataset.wevm != null) return connectEvm(evm[+b.dataset.wevm], b);
-    if (b.dataset.wsol != null) return connectSol(sol[+b.dataset.wsol], b);
+function wmShow(view, quiet) {
+  const body = $('#wmBody'); if (!body) return;
+  wmState.view = view;
+  $('#wmBack').hidden = view === 'list';
+  $('#wmH').textContent = { list: 'Connect a wallet', connect: 'Connecting', install: 'Get ' + (wmState.target && wmState.target.k.name), help: 'What is a wallet?', chain: 'Choose a network' }[view] || 'Connect a wallet';
+  if (view === 'list') return wmList(body, quiet);
+  body.innerHTML = '';
+  if (view === 'help') return wmHelp(body);
+  if (view === 'install') return wmInstall(body, wmState.target);
+  if (view === 'chain') return wmChain(body, wmState.target);
+}
+function wmList(body, quiet) {
+  const rows = catalogRows();
+  const last = store('sc.lastWallet');
+  const q = wmState.q.toLowerCase();
+  const match = r => (!q || r.k.name.toLowerCase().includes(q)) && (wmState.chain === 'all' || r.k.chains.includes(wmState.chain));
+  const inst = rows.filter(r => r.installed && match(r)), rest = rows.filter(r => !r.installed && match(r));
+  const framed = (() => { try { return window.top !== window.self; } catch (e) { return true; } })();
+  const chip = c => `<span class="wm-chip ${c}">${c === 'sol' ? 'Solana' : 'EVM'}</span>`;
+  const row = (r, i) => `<button type="button" class="wm-row ${r.installed ? 'is-in' : ''}" data-key="${esc(r.k.ids[0])}" style="animation-delay:${i * 35}ms">
+      ${walletArt(r.k.key, 40, r.icon)}
+      <span class="grow"><b>${esc(r.k.name)}</b>${last === r.k.ids[0] ? '<span class="wm-last">Last used</span>' : ''}<span class="micro">${esc(r.k.net)}</span></span>
+      <span class="wm-chips">${r.k.chains.map(chip).join('')}</span>
+      <span class="wm-go">${r.installed ? 'Connect' : 'Get'}<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </button>`;
+  let i = 0;
+  body.innerHTML = `<div class="wm-tools"><div class="seg" id="wmChain" role="tablist">${[['all', 'All'], ['evm', 'Ethereum & EVM'], ['sol', 'Solana']].map(([k, l]) => `<button type="button" role="tab" data-c="${k}" class="${wmState.chain === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <input class="search" id="wmQ" placeholder="Search wallets" value="${esc(wmState.q)}" aria-label="Search wallets" autocomplete="off"></div>
+    ${framed && !rows.some(r => r.installed) ? `<div class="wm-note"><b>Can't see your wallet?</b> This page is running inside a preview frame, and browser extensions often stay hidden there. Open Sharecurve in its own tab to use MetaMask, Phantom and the rest. <button class="btn ghost" type="button" id="wmCopyUrl">Copy page link</button></div>` : ''}
+    <div class="wm-sec">${inst.length ? `<span class="eyebrow">Detected in this browser</span>${inst.map(r => row(r, i++)).join('')}` : ''}</div>
+    <div class="wm-sec">${rest.length ? `<span class="eyebrow">${inst.length ? 'More wallets' : 'Popular wallets'}</span>${rest.map(r => row(r, i++)).join('')}` : ''}</div>
+    ${!inst.length && !rest.length ? `<div class="empty">No wallet matches “${esc(wmState.q)}”.</div>` : ''}
+    <div class="wm-sec"><span class="eyebrow">No extension?</span>
+      <button type="button" class="wm-row wm-demo" id="wDemo" style="animation-delay:${i * 35}ms">${walletArt('demo', 40)}<span class="grow"><b>Demo wallet</b><span class="micro">New address with ${money(START_USD)} of test funds, ready in one click</span></span><span class="wm-go">Try it<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button></div>`;
+  if (quiet) body.querySelectorAll('.wm-row').forEach(r => r.style.animation = 'none');
+  $('#wmQ').oninput = e => { wmState.q = e.target.value; const pos = e.target.selectionStart; wmList(body, true); const qi = $('#wmQ'); qi.focus(); qi.setSelectionRange(pos, pos); };
+  $('#wmChain').onclick = e => { const b = e.target.closest('button'); if (!b) return; wmState.chain = b.dataset.c; store('sc.wmChain', wmState.chain); wmList(body, true); };
+  if ($('#wmCopyUrl')) $('#wmCopyUrl').onclick = () => copyText(location.href, 'Link copied. Paste it into a new tab.');
+  body.onclick = e => {
+    const b = e.target.closest('.wm-row'); if (!b) return;
+    if (b.id === 'wDemo') return wmDemo(b);
+    const r = catalogRows().find(x => x.k.ids[0] === b.dataset.key); if (!r) return;
+    wmState.target = r;
+    if (!r.installed) return wmShow('install');
+    if (r.evm && r.sol) return wmShow('chain');
+    wmConnect(r, r.sol ? 'sol' : 'evm');
   };
+  const first = body.querySelector('.wm-row'); if (first && !quiet && !('ontouchstart' in window)) first.focus({ preventScroll: true });
+}
+function wmChain(body, r) {
+  body.innerHTML = `<div class="wm-detail">${walletArt(r.k.key, 64, r.icon)}<p>${esc(r.k.name)} works on more than one network. Pick the one you want to sign in with.</p>
+    <div class="wm-choices"><button type="button" class="wm-row" data-c="sol">${walletArt('solflare', 32)}<span class="grow"><b>Solana</b><span class="micro">Sign in with your Solana address</span></span></button>
+    <button type="button" class="wm-row" data-c="evm">${walletArt('metamask', 32)}<span class="grow"><b>Ethereum, Base and other EVM chains</b><span class="micro">Sign in with your 0x address</span></span></button></div></div>`;
+  body.onclick = e => { const b = e.target.closest('[data-c]'); if (b) wmConnect(r, b.dataset.c); };
+}
+function wmDemo(btn) {
+  btn.classList.add('pressed');
+  const addr = randAddr(mulberry((now() ^ (Math.random() * 1e9)) >>> 0));
+  setWallet(addr, { kind: 'demo', name: 'Demo wallet', icon: '' }, true);
+  store('sc.lastWallet', 'demo');
+  wmSuccess({ k: { key: 'demo', name: 'Demo wallet' } }, addr);
+}
+async function wmConnect(r, chain) {
+  const body = $('#wmBody'); if (!body) return;
+  const token = ++wmState.token;
+  wmState.view = 'connect'; $('#wmBack').hidden = false; $('#wmH').textContent = 'Connecting';
+  body.innerHTML = `<div class="wm-detail"><div class="wm-ring">${walletArt(r.k.key, 64, r.icon)}</div>
+    <h3>Approve in ${esc(r.k.name)}</h3><p id="wmMsg">A ${esc(r.k.name)} window should open. Check the request and press Connect there.</p>
+    <div class="wm-steps"><span class="on">Request sent</span><span id="wmS2">Waiting for you</span><span id="wmS3">Signed in</span></div>
+    <div class="bar" style="justify-content:center;margin:0"><button class="btn ghost" id="wmCancel" type="button">Cancel</button></div></div>`;
+  $('#wmCancel').onclick = () => { wmState.token++; wmShow('list'); };
+  const slow = setTimeout(() => { if (wmState.token === token && $('#wmMsg')) $('#wmMsg').textContent = `Still waiting. If no window opened, click the ${r.k.name} icon in your browser toolbar.`; }, 8000);
+  try {
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 60000));
+    let addr;
+    if (chain === 'sol') {
+      const res = await Promise.race([r.sol.provider.connect(), timeout]);
+      const pk = (res && res.publicKey) || r.sol.provider.publicKey; if (!pk) throw new Error('no key');
+      if (token !== wmState.token) return;
+      activeProvider = r.sol.provider; hookSol(r.sol);
+      addr = pk.toString();
+      setWallet(addr, { kind: 'solana', name: r.k.name, rdns: r.sol.id, icon: '' }, true);
+    } else {
+      const acc = await Promise.race([r.evm.provider.request({ method: 'eth_requestAccounts' }), timeout]);
+      if (!acc || !acc[0]) throw new Error('no account');
+      if (token !== wmState.token) return;
+      const chainId = await r.evm.provider.request({ method: 'eth_chainId' }).catch(() => null);
+      activeProvider = r.evm.provider; hookEvm(r.evm);
+      addr = acc[0].toLowerCase();
+      setWallet(addr, { kind: 'evm', name: r.k.name, rdns: r.evm.info.rdns, icon: /^data:image\//.test(r.evm.info.icon || '') ? r.evm.info.icon : '', chainId }, true);
+      refreshNative();
+    }
+    clearTimeout(slow);
+    store('sc.lastWallet', r.k.ids[0]);
+    wmSuccess(r, addr);
+  } catch (e) {
+    clearTimeout(slow);
+    if (token !== wmState.token || !$('#wmBody')) return;
+    body.innerHTML = `<div class="wm-detail wm-fail"><div class="wm-ring off">${walletArt(r.k.key, 64, r.icon)}<span class="wm-badge bad">!</span></div>
+      <h3>Not connected</h3><p>${esc(walletErr(e, r.k.name))}</p>
+      <div class="bar" style="justify-content:center;margin:0"><button class="btn primary" id="wmRetry" type="button">Try again</button><button class="btn ghost" id="wmOther" type="button">Pick another wallet</button></div></div>`;
+    $('#wmRetry').onclick = () => wmConnect(r, chain);
+    $('#wmOther').onclick = () => wmShow('list');
+  }
+}
+function wmSuccess(r, addr) {
+  const body = $('#wmBody'); if (!body) return;
+  $('#wmBack').hidden = true; $('#wmH').textContent = 'Connected';
+  body.innerHTML = `<div class="wm-detail wm-ok"><div class="wm-ring done">${walletArt(r.k.key, 64, r.icon)}<span class="wm-badge"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+    <h3>You're in</h3><p class="mono">${esc(short(addr))}</p></div>`;
+  burst(body.querySelector('.wm-ring'));
+  setTimeout(() => { if (wmState.view !== 'list') { closeModal(); toast(`Connected with ${r.k.name}`); finishConnect(); } }, 1100);
+  wmState.view = 'done';
+}
+function burst(el) {
+  if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cols = ['var(--accent)', 'var(--teal)', 'var(--up)'];
+  for (let i = 0; i < 14; i++) { const s = document.createElement('i'); s.className = 'spark'; const a = (i / 14) * Math.PI * 2; s.style.setProperty('--dx', Math.cos(a) * (46 + Math.random() * 20) + 'px'); s.style.setProperty('--dy', Math.sin(a) * (46 + Math.random() * 20) + 'px'); s.style.background = cols[i % 3]; el.appendChild(s); }
+}
+function wmInstall(body, r) {
+  const link = location.href, canDeep = !!r.k.deep;
+  body.innerHTML = `<div class="wm-detail">${walletArt(r.k.key, 64)}
+    <p>${esc(r.k.name)} isn't installed in this browser yet.</p>
+    <ol class="wm-howto"><li><a class="btn primary" href="${esc(r.k.url)}" target="_blank" rel="noopener noreferrer">Install ${esc(r.k.name)} ↗</a></li>
+      <li>Create a wallet or import one, then come back to this tab.</li>
+      <li><button class="btn ghost" type="button" id="wmRecheck">I installed it, check again</button></li></ol>
+    ${canDeep ? `<div class="wm-qr"><div id="wmQr" class="wm-qrbox" aria-label="QR code"></div><div><b>On your phone?</b><p class="micro">Scan to open Sharecurve inside the ${esc(r.k.name)} app's browser, where it connects straight away.</p><div class="bar" style="margin:8px 0 0"><a class="btn ghost" href="${esc(r.k.deep(link))}" target="_blank" rel="noopener noreferrer">Open in app</a><button class="btn ghost" type="button" id="wmCopyDeep">Copy link</button></div></div></div>` : ''}
+  </div>`;
+  $('#wmRecheck').onclick = () => {
+    const b = $('#wmRecheck'); b.textContent = 'Looking…'; askWallets();
+    setTimeout(() => {
+      const fresh = catalogRows().find(x => x.k.ids[0] === r.k.ids[0]);
+      if (fresh && fresh.installed) { wmState.target = fresh; return fresh.evm && fresh.sol ? wmShow('chain') : wmConnect(fresh, fresh.sol ? 'sol' : 'evm'); }
+      b.textContent = 'Still not found. Reload the page after installing.'; b.classList.add('shake'); setTimeout(() => b.classList.remove('shake'), 500);
+    }, 500);
+  };
+  if (canDeep) {
+    $('#wmCopyDeep').onclick = () => copyText(r.k.deep(link), 'App link copied');
+    const box = $('#wmQr');
+    if (window.QRCode) { try { new QRCode(box, { text: r.k.deep(link), width: 116, height: 116, colorDark: '#0b1124', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); } catch (e) { box.hidden = true; } }
+    else box.hidden = true;
+  }
+}
+function wmHelp(body) {
+  body.innerHTML = `<div class="prose wm-help">
+    <p>A wallet is an app or browser extension that holds your crypto address. Connecting one lets Sharecurve see your address. It can't move funds without your approval.</p>
+    <details open><summary>Which one should I get?</summary><p><strong>Phantom</strong> if you want Solana and Ethereum in one app. <strong>MetaMask</strong> or <strong>Rabby</strong> for Ethereum and its networks. <strong>Coinbase Wallet</strong> if you already use Coinbase.</p></details>
+    <details><summary>Is connecting safe?</summary><p>Connecting shares your public address. Signing in asks you to sign a free message, which does not send a transaction. Never type your recovery phrase into a website.</p></details>
+    <details><summary>Do I need real money here?</summary><p>No. Trading on Sharecurve uses the demo ledger. Every address gets ${money(START_USD)} of test funds.</p></details>
+    <div class="bar" style="margin:6px 0 0"><button class="btn primary" type="button" id="wmHelpDemo">Try the demo wallet</button><button class="btn ghost" type="button" id="wmHelpBack">See wallets</button></div></div>`;
+  $('#wmHelpDemo').onclick = () => { wmShow('list'); const d = $('#wDemo'); if (d) wmDemo(d); };
+  $('#wmHelpBack').onclick = () => wmShow('list');
 }
 function finishConnect() { const t = connectThen; connectThen = null; if (t) t(); }
-function busy(b, on) { if (!b) return; b.disabled = on; const p = b.querySelector('.pill'); if (p) p.textContent = on ? 'Check your wallet…' : 'Connect'; }
-async function connectEvm(w, btn) {
-  const name = w.info.name; busy(btn, true);
-  try {
-    const acc = await w.provider.request({ method: 'eth_requestAccounts' });
-    if (!acc || !acc[0]) throw new Error('no account');
-    const chainId = await w.provider.request({ method: 'eth_chainId' }).catch(() => null);
-    activeProvider = w.provider; hookEvm(w);
-    setWallet(acc[0].toLowerCase(), { kind: 'evm', name, rdns: w.info.rdns, icon: /^data:image\//.test(w.info.icon || '') ? w.info.icon : '', chainId });
-    refreshNative(); finishConnect();
-  } catch (e) { busy(btn, false); toast(walletErr(e, name)); }
-}
-async function connectSol(w, btn) {
-  busy(btn, true);
-  try {
-    const r = await w.provider.connect();
-    const pk = (r && r.publicKey) || w.provider.publicKey; if (!pk) throw new Error('no key');
-    activeProvider = w.provider; hookSol(w);
-    setWallet(pk.toString(), { kind: 'solana', name: w.name, rdns: w.id, icon: '', chainId: null });
-    finishConnect();
-  } catch (e) { busy(btn, false); toast(walletErr(e, w.name)); }
-}
 function hookEvm(w) {
   const p = w.provider; if (hooked.has(p) || !p.on) return; hooked.add(p);
   p.on('accountsChanged', a => {
