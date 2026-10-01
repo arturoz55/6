@@ -249,10 +249,62 @@ function change24(c) {
 function vol24(c) { const cut = now() - 86400e3; let v = 0; for (let i = c.trades.length - 1; i >= 0 && c.trades[i].t > cut; i--) v += c.trades[i].usd; return v; }
 function stockChg(sym) { const s = S.stocks[sym]; return s.px / s.open - 1; }
 
+// ---------- drawn coin art ----------
+// Every demo coin gets an original illustration of its theme. Any coin without a picture
+// (one you launch, or a live token with no icon) gets a little mascot generated from its ticker.
+const W_ = '#fff', INK = '#141a33';
+const COIN_ART = {
+  GRID: `<g transform="translate(14 14)"><rect width="36" height="36" rx="8" fill="${W_}"/><path d="M12 0v36M24 0v36M0 12h36M0 24h36" stroke="#cfd6ff" stroke-width="2"/><circle cx="12" cy="15" r="4" fill="${INK}"/><circle cx="24" cy="15" r="4" fill="${INK}"/><circle cx="13" cy="14" r="1.3" fill="${W_}"/><circle cx="25" cy="14" r="1.3" fill="${W_}"/><path d="M11 26q7 5 14 0" stroke="${INK}" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M4 0l-5-7M32 0l5-7" stroke="${W_}" stroke-width="3" stroke-linecap="round"/></g>`,
+  SHRTS: `<path d="M16 18h32l4 28h-14l-6-14-6 14H12z" fill="${W_}"/><path d="M16 22h32" stroke="#ffd2a8" stroke-width="3"/><path d="M29 27l8 5-8 5z" fill="#e0493b"/>`,
+  SKIP: `<rect x="10" y="14" width="44" height="30" rx="6" fill="${W_}"/><rect x="14" y="18" width="36" height="22" rx="3" fill="${INK}"/><path d="M24 23l8 6-8 6zM32 23l8 6-8 6z" fill="${W_}"/><rect x="41" y="23" width="3" height="12" rx="1" fill="${W_}"/><path d="M26 50h12" stroke="${W_}" stroke-width="3" stroke-linecap="round"/>`,
+  TICKS: `<path d="M12 16h40a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H26l-10 8v-8h-4a4 4 0 0 1-4-4V20a4 4 0 0 1 4-4z" fill="${W_}"/><path d="M18 30l5 5 9-10M28 35l1 0 9-10" stroke="#3b82f6" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  OWL: `<rect x="12" y="16" width="40" height="36" rx="6" fill="${W_}"/><rect x="12" y="16" width="40" height="10" rx="5" fill="#ffd2a8"/><path d="M22 12v8M42 12v8" stroke="${W_}" stroke-width="4" stroke-linecap="round"/><path d="M32 30c3 4 7 6 7 12a7 7 0 0 1-14 0c0-3 2-5 3-7 1 2 2 3 2 3 0-3 1-6 2-8z" fill="#ff7a1a"/>`,
+  WRAP: `<rect x="12" y="26" width="40" height="26" rx="4" fill="${W_}"/><rect x="10" y="20" width="44" height="9" rx="3" fill="#ffd2a8"/><path d="M32 20v32" stroke="#1db954" stroke-width="5"/><path d="M32 20c-6-10-14-6-10-1 2 2 6 1 10 1zM32 20c6-10 14-6 10-1-2 2-6 1-10 1z" fill="#1db954"/><path d="M40 34v10a3 3 0 1 1-2-2.8V34l6-1.5" stroke="${INK}" stroke-width="2.2" fill="none"/>`,
+  SURGE: `<path d="M18 20a9 9 0 0 1 17-3 7 7 0 0 1 11 6H18z" fill="${W_}"/><path d="M33 24l-5 9h6l-4 9 10-12h-6l4-6z" fill="#ffd25a"/><rect x="12" y="40" width="40" height="10" rx="4" fill="${W_}"/><path d="M18 40l4-6h20l4 6" fill="${W_}"/><circle cx="20" cy="50" r="4" fill="${INK}"/><circle cx="44" cy="50" r="4" fill="${INK}"/>`,
+  UPVT: `<path d="M32 10l18 20H40v20H24V30H14z" fill="${W_}"/><path d="M32 18l10 11h-6v15h-8V29h-6z" fill="#ff7a3c"/><path d="M50 12l1.5 3.5L55 17l-3.5 1.5L50 22l-1.5-3.5L45 17l3.5-1.5z" fill="${W_}"/>`,
+  OBBY: `<rect x="10" y="40" width="14" height="14" rx="2" fill="${W_}"/><rect x="25" y="30" width="14" height="24" rx="2" fill="#ffd2a8"/><rect x="40" y="20" width="14" height="34" rx="2" fill="${W_}"/><circle cx="17" cy="31" r="5" fill="#ffd25a"/><path d="M20 27q10-14 22-9" stroke="${W_}" stroke-width="2" stroke-dasharray="3 3" fill="none"/>`,
+  ENDRS: `<path d="M24 38l-6 16 8-4 6 6 4-16zM40 38l6 16-8-4-6 6-4-16z" fill="#ffd2a8"/><circle cx="32" cy="28" r="16" fill="${W_}"/><circle cx="32" cy="28" r="11" fill="#1f9be0"/><path d="M32 20l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill="${W_}"/>`,
+  HOST: `<path d="M10 32L32 13l22 19" stroke="${W_}" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 30v22h32V30L32 17z" fill="${W_}"/><rect x="28" y="40" width="8" height="12" rx="1" fill="#ff5a5f"/><path d="M32 23l1.8 3.6 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z" fill="#ffd25a"/>`,
+  CHAT: `<path d="M10 14h34a4 4 0 0 1 4 4v18a4 4 0 0 1-4 4H24l-8 7v-7h-6a4 4 0 0 1-4-4V18a4 4 0 0 1 4-4z" fill="${W_}"/><path d="M23 21l11 6-11 6z" fill="#9146ff"/><path d="M50 26h4a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4h-2v6l-7-6H36a4 4 0 0 1-4-4v-2" fill="#ffd2a8"/>`,
+  BOARD: `<rect x="8" y="12" width="48" height="40" rx="4" fill="#e6b980"/><rect x="8" y="12" width="48" height="40" rx="4" fill="none" stroke="${W_}" stroke-width="3"/><rect x="14" y="20" width="14" height="14" fill="${W_}" transform="rotate(-6 21 27)"/><rect x="34" y="18" width="16" height="12" fill="#ffd2a8" transform="rotate(5 42 24)"/><rect x="28" y="34" width="16" height="13" fill="${W_}" transform="rotate(-3 36 40)"/><circle cx="21" cy="21" r="2.6" fill="#c8232c"/><circle cx="42" cy="19" r="2.6" fill="#c8232c"/><circle cx="36" cy="35" r="2.6" fill="#c8232c"/>`,
+  SNAPS: `<path d="M32 8c5 8 15 12 15 26a15 15 0 0 1-30 0c0-7 4-11 6-15 2 4 4 6 4 6 0-7 2-12 5-17z" fill="${W_}"/><path d="M32 30c3 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-5 3-7l2 3c0-3 0-5 1-7z" fill="#ff8a00"/><text x="32" y="58" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="700" font-size="9" fill="${W_}">365</text>`,
+  THRD: `<rect x="20" y="12" width="24" height="6" rx="2" fill="${W_}"/><rect x="20" y="46" width="24" height="6" rx="2" fill="${W_}"/><rect x="23" y="18" width="18" height="28" fill="#ffd2a8"/><path d="M23 22l18 4M23 28l18 4M23 34l18 4M23 40l18 4" stroke="#c86a1c" stroke-width="1.8"/><path d="M41 30q14 2 12 16" stroke="${W_}" stroke-width="2" fill="none"/><path d="M50 40l6 14" stroke="${W_}" stroke-width="2.4" stroke-linecap="round"/>`,
+  DASH: `<path d="M22 20h26l-3 30H25z" fill="${W_}"/><path d="M28 20a7 7 0 0 1 14 0" stroke="${W_}" stroke-width="3.4" fill="none"/><path d="M29 32h12" stroke="#ff3008" stroke-width="3.4" stroke-linecap="round"/><path d="M6 26h12M9 33h10M6 40h12" stroke="${W_}" stroke-width="3" stroke-linecap="round" opacity=".75"/>`,
+};
+function mascot(seed) {
+  const h = hashStr(seed || 'x'), r = mulberry(h), pick = a => a[Math.floor(r() * a.length)];
+  const hue = h % 360, body = `hsl(${hue} 80% 70%)`, shade = `hsl(${hue} 70% 55%)`;
+  const shape = pick([
+    `<circle cx="32" cy="36" r="20" fill="${body}"/>`,
+    `<rect x="12" y="16" width="40" height="40" rx="14" fill="${body}"/>`,
+    `<path d="M32 10c14 14 20 22 20 30a20 20 0 0 1-40 0c0-8 6-16 20-30z" fill="${body}"/>`,
+    `<path d="M14 54V30a18 18 0 0 1 36 0v24l-6-4-6 4-6-4-6 4-6-4z" fill="${body}"/>`,
+  ]);
+  const extra = pick([
+    `<path d="M32 16V8" stroke="${shade}" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="7" r="3.5" fill="#ffd25a"/>`,
+    `<path d="M20 20l-4-10 10 6M44 20l4-10-10 6" fill="${shade}"/>`,
+    `<path d="M32 16c-2-6 4-10 8-8-2 4-4 6-8 8z" fill="#5ee0a6"/>`,
+    `<path d="M22 18h20l-3-8-4 5-3-6-3 6-4-5z" fill="#ffd25a"/>`, '',
+  ]);
+  const eyes = pick([
+    `<circle cx="25" cy="34" r="4" fill="${INK}"/><circle cx="39" cy="34" r="4" fill="${INK}"/><circle cx="26.3" cy="32.8" r="1.4" fill="#fff"/><circle cx="40.3" cy="32.8" r="1.4" fill="#fff"/>`,
+    `<path d="M21 34q4-4 8 0M35 34q4-4 8 0" stroke="${INK}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`,
+    `<ellipse cx="25" cy="34" rx="3" ry="5" fill="${INK}"/><ellipse cx="39" cy="34" rx="3" ry="5" fill="${INK}"/>`,
+    `<circle cx="32" cy="32" r="7" fill="#fff"/><circle cx="33" cy="33" r="3.6" fill="${INK}"/>`,
+  ]);
+  const mouth = pick([`<path d="M26 43q6 5 12 0" stroke="${INK}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`, `<ellipse cx="32" cy="44" rx="3" ry="3.6" fill="${INK}"/>`, `<path d="M27 44h10" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/>`, `<path d="M26 42q6 7 12 0z" fill="${INK}"/>`]);
+  const cheeks = r() < .6 ? `<circle cx="20" cy="41" r="3" fill="#ff8fa3" opacity=".7"/><circle cx="44" cy="41" r="3" fill="#ff8fa3" opacity=".7"/>` : '';
+  return extra + shape + eyes + mouth + cheeks;
+}
+function coinSvg(c) {
+  const col = (CO[c.co] && CO[c.co].c) || `hsl(${hashStr(c.sym || 'x') % 360} 55% 45%)`;
+  const id = 'cg' + hashStr((c.id || '') + c.sym + col).toString(36);
+  const inner = COIN_ART[c.sym] && !c.custom ? COIN_ART[c.sym] : mascot(c.sym + (c.id || ''));
+  return `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${col}"/><stop offset="1" stop-color="color-mix(in srgb, ${col} 45%, #0b1124)"/></linearGradient></defs><rect width="64" height="64" fill="url(#${id})"/><circle cx="54" cy="8" r="18" fill="#fff" opacity=".08"/>${inner}</svg>`;
+}
 function logo(c, size = '') {
   if (c.img) return `<span class="logo ${size}"><img src="${esc(c.img)}" alt=""></span>`;
-  const col = CO[c.co].c;
-  return `<span class="logo ${size}" style="background:linear-gradient(135deg, ${col}, color-mix(in srgb, ${col} 55%, #000))" aria-hidden="true">${esc(c.sym.slice(0, 2))}</span>`;
+  return `<span class="logo art ${size}" aria-hidden="true">${coinSvg(c)}</span>`;
 }
 function coLogo(sym, size = 'sm') { const c = CO[sym]; return `<span class="logo ${size}" style="background:${c.c}" aria-hidden="true">${esc(sym.slice(0, 2))}</span>`; }
 const starSvg = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3.2l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.5l6-.8z"/></svg>';
@@ -306,6 +358,11 @@ function initHeader() {
     const same = e.target.closest('a[href^="#"]');
     if (same && !e.defaultPrevented) { const h = same.getAttribute('href'); const norm = x => (x || '').replace(/^#\/?/, '').replace(/\/$/, ''); if (norm(h) === norm(location.hash)) { e.preventDefault(); closeModal(); const m = $('.mobile-nav'); if (m) m.remove(); if (scrollY > 10) window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); render(); return; } }
     const md = e.target.closest('[data-modal]'); if (md) { md.dataset.modal === 'license' ? openLicense() : openStorage(); return; }
+    const xr = e.target.closest('[data-expand]');
+    if (xr && !e.target.closest('a,button')) { const d = xr.nextElementSibling; const open = !d.classList.contains('open'); $$('.xdetail.open').forEach(o => { o.classList.remove('open'); o.previousElementSibling.setAttribute('aria-expanded', 'false'); }); d.classList.toggle('open', open); xr.setAttribute('aria-expanded', open); return; }
+    const fl = e.target.closest('.flip');
+    if (fl && (!e.target.closest('a,button') || e.target.closest('[data-unflip]'))) { const on = !fl.classList.contains('flipped'); fl.classList.toggle('flipped', on); fl.setAttribute('aria-pressed', on); return; }
+    const pk = e.target.closest('[data-peek]'); const ctl = e.target.closest('a,button'); if (pk && (!ctl || ctl === pk)) { openPeek(pk.dataset.peek, pk); return; }
     const go = e.target.closest('[data-go]'); if (go && !e.target.closest('a,button:not([data-go])')) location.hash = go.dataset.go;
   });
   renderConnect();
@@ -790,7 +847,7 @@ function drawSparks() { $$('canvas[data-spark]').forEach(cv => { const c = S.coi
 // ---------- cards ----------
 function card(c) {
   const ch = change24(c);
-  return `<article class="card" data-go="#/coin/${c.id}" data-coin="${c.id}" tabindex="0" role="link" aria-label="${esc(c.name)}">
+  return `<article class="card" data-peek="coin:${c.id}" data-coin="${c.id}" tabindex="0" role="link" aria-label="${esc(c.name)}">
     <div class="row">${logo(c)}<div class="nm"><h3>${esc(c.name)}</h3><div class="micro mono">${esc(c.sym)} · ${esc(c.app)}</div></div>${starBtn(c.id)}</div>
     <div class="row" style="justify-content:space-between"><span class="pairtag">${esc(c.sym)} / ${c.co}</span><div class="px"><div class="p" data-px>${money(priceUsd(c), { co: c.co })}</div><div class="micro mono ${cls(ch)}" data-ch>${pct(ch)}</div></div></div>
     <canvas data-spark="${c.id}" aria-hidden="true"></canvas>
@@ -872,7 +929,7 @@ function liveImg(p, size = '') {
   const sym = (p.baseToken.symbol || '?').slice(0, 2).toUpperCase();
   const hue = hashStr(a) % 360;
   // initials sit underneath; the token's own image covers them once it loads and removes itself if it fails
-  return `<span class="logo ${size}" style="background:linear-gradient(135deg,hsl(${hue} 70% 55%),hsl(${(hue + 40) % 360} 65% 35%))">${esc(sym)}${src ? `<img class="tok-img" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
+  return `<span class="logo art ${size}" style="background:hsl(${hue} 40% 30%)">${coinSvg({ sym: sym + a.slice(0, 6), co: '', custom: true })}${src ? `<img class="tok-img" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
 }
 function livePts(p) {
   const n = LIVE.updated || now(), px = lp(p); if (!px) return [];
@@ -898,7 +955,7 @@ const usdC = v => money(v, { compact: 1 });
 function liveCard(p) {
   const a = p.baseToken.address, ch = lchg(p), tx = ltx(p), tot = tx.buys + tx.sells || 1;
   const boosted = LIVE.boosted.includes(a);
-  return `<article class="card live-card" data-go="#/live/${esc(a)}" data-live="${esc(a)}" tabindex="0" role="link" aria-label="${esc(p.baseToken.name)}">
+  return `<article class="card live-card" data-peek="live:${esc(a)}" data-live="${esc(a)}" tabindex="0" role="link" aria-label="${esc(p.baseToken.name)}">
     <div class="row">${liveImg(p)}<div class="nm"><h3>${esc(p.baseToken.name)}</h3><div class="micro mono">${esc(p.baseToken.symbol)} · ${esc(p.dexId)}${boosted ? ' · <span class="hot">trending</span>' : ''}</div></div>${starBtn('live:' + a)}</div>
     <div class="row" style="justify-content:space-between"><span class="pairtag">${esc(p.baseToken.symbol)} / ${esc(p.quoteToken.symbol)}</span><div class="px"><div class="p" data-px>${money(lp(p))}</div><div class="micro mono ${cls(ch)}" data-ch>${pct(ch)}</div></div></div>
     <canvas data-lspark="${esc(a)}" aria-hidden="true"></canvas>
@@ -937,6 +994,7 @@ function livePaint() {
     });
   }
   if (routeParts()[0] === 'live') liveRefreshPage();
+  refreshPeek();
   if (routeParts()[0] === 'watch' && $('#liveWatch')) $('#liveWatch').innerHTML = liveWatchHtml();
   renderTape();
 }
@@ -960,7 +1018,7 @@ function liveTokenPage(v, addr) {
   links.push(`<a class="btn ghost" href="https://solscan.io/token/${esc(addr)}" target="_blank" rel="noopener noreferrer">Solscan ↗</a>`);
   ((p.info && p.info.websites) || []).slice(0, 2).forEach(w => /^https:\/\//.test(w.url) && links.push(`<a class="btn ghost" href="${esc(w.url)}" target="_blank" rel="noopener noreferrer">${esc(w.label || 'Website')} ↗</a>`));
   ((p.info && p.info.socials) || []).slice(0, 3).forEach(s => /^https:\/\//.test(s.url) && links.push(`<a class="btn ghost" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.type === 'twitter' ? 'X' : s.type)} ↗</a>`));
-  v.innerHTML = `<div class="coin-top">${liveImg(p, 'lg')}<div class="t"><div class="tags"><span class="pairtag">${sym} / ${esc(p.quoteToken.symbol)}</span><span class="pill">${esc(p.dexId)}</span><span class="pill">Solana</span>${LIVE.boosted.includes(addr) ? '<span class="pill grad">Trending</span>' : ''}<span class="pill" id="lvSrc">${LIVE.source === 'live' ? 'live' : 'snapshot'}</span></div><h1 style="font-size:clamp(28px,4vw,40px)">${esc(p.baseToken.name)}</h1>
+  v.innerHTML = `<div class="coin-top"><span class="vt-logo">${liveImg(p, 'lg')}</span><div class="t"><div class="tags"><span class="pairtag">${sym} / ${esc(p.quoteToken.symbol)}</span><span class="pill">${esc(p.dexId)}</span><span class="pill">Solana</span>${LIVE.boosted.includes(addr) ? '<span class="pill grad">Trending</span>' : ''}<span class="pill" id="lvSrc">${LIVE.source === 'live' ? 'live' : 'snapshot'}</span></div><h1 style="font-size:clamp(28px,4vw,40px)">${esc(p.baseToken.name)}</h1>
       <button class="addr-chip mono" id="lvCopy" type="button" title="Copy token address">${esc(short(addr))} <span aria-hidden="true">⧉</span></button></div>
     <div class="price"><div class="p" id="lvPx">${money(lp(p))}</div><div class="mono micro" id="lvCh"></div></div>${starBtn('live:' + addr)}</div>
   <div class="coin-grid"><div>
@@ -1062,6 +1120,168 @@ function liveWatchHtml() {
   return list.length ? list.map(liveCard).join('') : '';
 }
 
+// ---------- quick view: tap a card, a sheet slides in ----------
+let peek = null; // { kind, id, list, el }
+function peekList() { return $$('#view [data-peek]').map(e => e.dataset.peek).filter((v, i, a) => a.indexOf(v) === i); }
+function openPeek(key, from) {
+  const [kind, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+  if (kind === 'coin' && !S.coins[id]) return;
+  if (kind === 'live' && !LIVE.pairs.get(id)) return;
+  const list = peekList();
+  if (!peek) {
+    const sc = document.createElement('div'); sc.className = 'peek-scrim';
+    sc.innerHTML = `<aside class="peek" role="dialog" aria-modal="true" aria-label="Quick view"><div class="peek-grab" aria-hidden="true"></div><div class="peek-body"></div></aside>`;
+    document.body.appendChild(sc);
+    sc.addEventListener('click', e => { if (e.target === sc) closePeek(); });
+    peek = { el: sc, key, list, origin: from || document.activeElement };
+    requestAnimationFrame(() => requestAnimationFrame(() => sc.classList.add('open')));
+    dragToClose(sc.querySelector('.peek'));
+    document.body.classList.add('peeking');
+  } else { peek.list = list.length ? list : peek.list; }
+  const dir = peek.key && peek.list.indexOf(key) < peek.list.indexOf(peek.key) ? -1 : 1;
+  const changed = peek.key !== key || !peek.el.querySelector('.peek-in');
+  peek.key = key;
+  paintPeek(changed ? dir : 0);
+}
+function closePeek(instant) {
+  if (!peek) return;
+  const { el, origin } = peek; peek = null; document.body.classList.remove('peeking');
+  if (instant) { el.remove(); return; }
+  el.classList.remove('open'); el.classList.add('closing');
+  setTimeout(() => el.remove(), 320);
+  if (origin && origin.focus && document.contains(origin)) origin.focus({ preventScroll: true });
+}
+function stepPeek(d) { if (!peek) return; const l = peek.list, i = l.indexOf(peek.key); const n = l[(i + d + l.length) % l.length]; if (n && n !== peek.key) openPeek(n); }
+function paintPeek(dir) {
+  if (!peek) return;
+  const body = peek.el.querySelector('.peek-body');
+  const [kind, id] = [peek.key.slice(0, peek.key.indexOf(':')), peek.key.slice(peek.key.indexOf(':') + 1)];
+  const i = peek.list.indexOf(peek.key), n = peek.list.length;
+  const isLive = kind === 'live', c = isLive ? null : S.coins[id], p = isLive ? LIVE.pairs.get(id) : null;
+  if (!c && !p) return closePeek();
+  const name = isLive ? p.baseToken.name : c.name, sym = isLive ? p.baseToken.symbol : c.sym;
+  const px = isLive ? lp(p) : priceUsd(c), ch = isLive ? lchg(p) : change24(c);
+  const full = isLive ? '#/live/' + id : '#/coin/' + id;
+  const pos = W ? (isLive ? ((W.paper || {})['live:' + id] || {}).qty || 0 : c.holders[W.addr] || 0) : 0;
+  const stats = isLive
+    ? [['Market cap', usdC(lmc(p))], ['Liquidity', usdC(lliq(p))], ['Volume 24h', usdC(lvol(p))], ['Pair age', p.pairCreatedAt ? ago(p.pairCreatedAt) : '—'], ['1h', `<span class="${cls(lchg(p, 'h1'))}">${pct(lchg(p, 'h1'))}</span>`], ['5m', `<span class="${cls(lchg(p, 'm5'))}">${pct(lchg(p, 'm5'))}</span>`]]
+    : [['Market cap', usdC(mcapUsd(c))], ['Volume 24h', usdC(vol24(c))], ['vs ' + c.co, `<span class="${cls(excess(c))}">${pct(excess(c))}</span>`], ['Holders', Object.keys(c.holders).length], ['Creator tax', (c.tax * 100).toFixed(2) + '%'], ['Launched', ago(c.created) + ' ago']];
+  const tx = isLive ? ltx(p) : null;
+  const html = `<div class="peek-in ${dir > 0 ? 'from-r' : dir < 0 ? 'from-l' : ''}">
+    <div class="peek-top">
+      <button class="icon-btn" type="button" data-peek-step="-1" aria-label="Previous" ${n < 2 ? 'disabled' : ''}>‹</button>
+      <span class="micro mono">${i + 1} / ${n || 1}</span>
+      <button class="icon-btn" type="button" data-peek-step="1" aria-label="Next" ${n < 2 ? 'disabled' : ''}>›</button>
+      <span class="spacer"></span>${starBtn(isLive ? 'live:' + id : id)}
+      <button class="icon-btn" type="button" data-peek-close aria-label="Close">✕</button>
+    </div>
+    <div class="peek-hero">
+      <div class="peek-logo">${isLive ? liveImg(p, 'xl') : logo(c, 'xl')}</div>
+      <div class="peek-name"><div class="tags"><span class="pairtag">${esc(sym)} / ${isLive ? esc(p.quoteToken.symbol) : c.co}</span>${isLive ? `<span class="pill">${esc(p.dexId)}</span>` : `<span class="pill">${esc(c.app)}</span>`}${isLive && LIVE.boosted.includes(id) ? '<span class="pill grad">Trending</span>' : ''}${!isLive && c.graduated ? '<span class="pill grad">Graduated</span>' : ''}</div><h2>${esc(name)}</h2></div>
+      <div class="peek-px"><div class="p mono" data-peek-px>${money(px, isLive ? {} : { co: c.co })}</div><div class="mono micro ${cls(ch)}" data-peek-ch>${pct(ch)} 24h</div></div>
+    </div>
+    <canvas class="peek-spark" data-peek-spark aria-hidden="true"></canvas>
+    ${isLive ? `<div class="bsbar"><i style="width:${(tx.buys / ((tx.buys + tx.sells) || 1) * 100).toFixed(1)}%"></i></div><div class="foot micro" style="display:flex;justify-content:space-between;margin-top:6px"><span class="up">${tx.buys.toLocaleString()} buys</span><span class="down">${tx.sells.toLocaleString()} sells</span></div>`
+      : c.graduated ? '' : `<div class="prog"><i style="width:${(progress(c) * 100).toFixed(1)}%"></i></div><div class="micro" style="margin-top:6px">${(progress(c) * 100).toFixed(1)}% of the curve sold</div>`}
+    <div class="peek-stats">${stats.map(([k, v2]) => `<div><span>${k}</span><b class="mono">${v2}</b></div>`).join('')}</div>
+    ${!isLive && c.desc ? `<p class="peek-desc">${esc(c.desc)}</p>` : ''}
+    <div class="peek-buy">
+      <div class="eyebrow">${isLive ? 'Quick paper buy' : 'Quick buy'}${pos > 0 ? ` · you hold <b class="mono">${tok(pos)}</b>` : ''}</div>
+      <div class="peek-chips">${[25, 100, 500].map(v2 => `<button type="button" class="chip" data-amt="${v2}">$${v2}</button>`).join('')}</div>
+      <button class="btn primary big peek-go" type="button" data-peek-buy disabled>Pick an amount</button>
+    </div>
+    <div class="peek-actions"><a class="btn ghost" href="${full}" data-peek-open>Open full page →</a>${isLive ? `<a class="btn ghost" href="https://gmgn.ai/sol/token/${esc(id)}" target="_blank" rel="noopener noreferrer">GMGN ↗</a>` : ''}</div>
+  </div>`;
+  body.innerHTML = html;
+  const spark = body.querySelector('[data-peek-spark]');
+  requestAnimationFrame(() => { if (isLive) drawSparkTP(spark, livePts(p)); else drawSparkTP(spark, c.trades.slice(-120).map(t => ({ t: t.t, p: t.p }))); });
+  let amt = 0;
+  body.onclick = e => {
+    const st = e.target.closest('[data-peek-step]'); if (st) return stepPeek(+st.dataset.peekStep);
+    if (e.target.closest('[data-peek-close]')) return closePeek();
+    const chip = e.target.closest('[data-amt]');
+    if (chip) { amt = +chip.dataset.amt; $$('.chip', body).forEach(x => x.classList.toggle('on', x === chip)); const b = body.querySelector('[data-peek-buy]'); b.disabled = false; b.textContent = W ? `${isLive ? 'Paper buy' : 'Buy'} $${amt} of ${sym}` : 'Connect to buy'; b.classList.remove('done'); return; }
+    if (e.target.closest('[data-peek-buy]')) {
+      if (!W) return openConnect(() => paintPeek(0));
+      if (amt > W.usd) return toast(`You have ${money(W.usd)} of demo cash.`);
+      let got = 0;
+      if (isLive) { const P = LIVE.pairs.get(id); W.paper = W.paper || {}; const k = 'live:' + id; const ps = W.paper[k] || { qty: 0, cost: 0, sym: P.baseToken.symbol, name: P.baseToken.name }; got = amt * .995 / lp(P); ps.qty += got; ps.cost += amt; W.paper[k] = ps; W.usd -= amt; }
+      else { const q = tradeBuy(S, c, amt / S.stocks[c.co].px, W.addr); if (!q) return toast('Nothing left to buy on this curve.'); got = q.out; W.usd -= amt - q.refund * S.stocks[c.co].px; }
+      save();
+      const b = e.target.closest('[data-peek-buy]'); b.classList.add('done'); b.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg> Got ${tok(got)} ${esc(sym)}`;
+      burst(b); toast(`${isLive ? 'Paper bought' : 'Bought'} ${tok(got)} ${sym}`);
+      setTimeout(() => { if (peek && peek.key === (isLive ? 'live:' : 'coin:') + id) paintPeek(0); }, 1400);
+      return;
+    }
+    const open = e.target.closest('[data-peek-open]');
+    if (open) { e.preventDefault(); const lg = body.querySelector('.peek-logo'); if (lg) lg.style.viewTransitionName = 'hero-logo'; closePeek(true); go(open.getAttribute('href')); }
+  };
+}
+function refreshPeek() {
+  if (!peek) return;
+  const body = peek.el.querySelector('.peek-body'), [kind, id] = [peek.key.slice(0, peek.key.indexOf(':')), peek.key.slice(peek.key.indexOf(':') + 1)];
+  const isLive = kind === 'live', c = S.coins[id], p = LIVE.pairs.get(id);
+  const pxEl = body.querySelector('[data-peek-px]'); if (!pxEl) return;
+  if (isLive && p) { pxEl.textContent = money(lp(p)); const ch = lchg(p); const ce = body.querySelector('[data-peek-ch]'); ce.textContent = pct(ch) + ' 24h'; ce.className = 'mono micro ' + cls(ch); drawSparkTP(body.querySelector('[data-peek-spark]'), livePts(p)); }
+  if (!isLive && c) { pxEl.textContent = money(priceUsd(c), { co: c.co }); const ch = change24(c); const ce = body.querySelector('[data-peek-ch]'); ce.textContent = pct(ch) + ' 24h'; ce.className = 'mono micro ' + cls(ch); drawSparkTP(body.querySelector('[data-peek-spark]'), c.trades.slice(-120).map(t => ({ t: t.t, p: t.p }))); const pr = body.querySelector('.prog i'); if (pr) pr.style.width = (progress(c) * 100).toFixed(1) + '%'; }
+}
+function dragToClose(sheet) {
+  // the drag only starts after the finger moves, so taps on the buttons in the header still work
+  let y0 = null, dy = 0, dragging = false;
+  const down = e => { if (innerWidth > 700 || !e.target.closest('.peek-grab, .peek-top')) return; y0 = e.clientY; dy = 0; dragging = false; };
+  const move = e => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); if (!dragging && dy > 8) { dragging = true; sheet.style.transition = 'none'; try { sheet.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ } } if (dragging) sheet.style.transform = `translateY(${dy}px)`; };
+  const up = () => { if (y0 == null) return; y0 = null; if (!dragging) return; dragging = false; sheet.style.transition = ''; sheet.style.transform = ''; if (dy > 110) closePeek(); };
+  sheet.addEventListener('pointerdown', down); sheet.addEventListener('pointermove', move); sheet.addEventListener('pointerup', up); sheet.addEventListener('pointercancel', up);
+}
+document.addEventListener('keydown', e => {
+  if (!peek) return;
+  if (e.key === 'Escape') { e.stopPropagation(); closePeek(); }
+  if (e.key === 'ArrowRight' && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) stepPeek(1);
+  if (e.key === 'ArrowLeft' && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) stepPeek(-1);
+}, true);
+
+// ---------- page transitions ----------
+function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
+function transition(fn) {
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    try { return document.startViewTransition(fn); } catch (e) { /* fall through */ }
+  }
+  fn();
+}
+
+// ---------- how it works: tap a step, the scene changes ----------
+const STEPS = [
+  ['Pick an app', 'Every app belongs to a listed company. Instagram is META, YouTube is GOOGL. That company becomes your pair.'],
+  ['Launch the coin', 'One billion coins are minted once. Eight hundred million go on the bonding curve, and you can set a creator tax of up to 2%.'],
+  ['Buyers fill the curve', 'Each buy puts shares of the paired stock into the curve and moves the price up the curve. Sells move it back down.'],
+  ['Graduate and lock', 'When the curve sells out, its stock and the last 200 million coins form a pool. That liquidity is locked for good.'],
+];
+const SCENES = [
+  `<g class="sc-a"><rect x="40" y="50" width="70" height="70" rx="18" fill="var(--teal)"/><circle cx="75" cy="85" r="14" fill="none" stroke="#fff" stroke-width="5"/><circle cx="96" cy="64" r="4" fill="#fff"/></g><path class="sc-arrow" d="M125 85h50" stroke="var(--ink-3)" stroke-width="3" stroke-dasharray="6 6"/><path d="M170 77l10 8-10 8" fill="none" stroke="var(--ink-3)" stroke-width="3"/><g class="sc-b"><rect x="190" y="58" width="96" height="54" rx="12" fill="var(--surface-3)" stroke="var(--rule-2)"/><text x="238" y="92" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="20" font-weight="700" fill="var(--ink)">META</text></g>`,
+  `<g class="sc-coin"><circle cx="160" cy="85" r="44" fill="var(--accent)"/><circle cx="160" cy="85" r="34" fill="none" stroke="#fff" stroke-width="3" opacity=".6"/><text x="160" y="94" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="24" font-weight="700" fill="var(--accent-ink)">1B</text></g><g class="sc-sparks" fill="var(--accent)"><circle cx="92" cy="50" r="5"/><circle cx="232" cy="46" r="4"/><circle cx="236" cy="128" r="6"/><circle cx="86" cy="124" r="4"/></g>`,
+  `<path d="M40 140 H290 M40 140 V20" stroke="var(--rule-2)" stroke-width="2"/><path class="sc-curve" d="M40 135 C140 132 200 110 290 30" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/><circle class="sc-dot" r="8" fill="var(--teal)"><animateMotion dur="3.2s" repeatCount="indefinite" path="M40 135 C140 132 200 110 290 30"/></circle><text x="292" y="150" text-anchor="end" font-family="IBM Plex Mono,monospace" font-size="11" fill="var(--ink-3)">coins sold →</text>`,
+  `<g class="sc-pool"><ellipse cx="160" cy="118" rx="96" ry="22" fill="var(--teal)" opacity=".35"/><ellipse cx="160" cy="112" rx="96" ry="22" fill="var(--teal)" opacity=".6"/></g><g class="sc-lock"><rect x="130" y="60" width="60" height="48" rx="10" fill="var(--accent)"/><path d="M142 60V48a18 18 0 0 1 36 0v12" fill="none" stroke="var(--accent)" stroke-width="8"/><circle cx="160" cy="82" r="6" fill="var(--accent-ink)"/><rect x="157" y="84" width="6" height="12" rx="2" fill="var(--accent-ink)"/></g>`,
+];
+function howItWorks() {
+  return `<section class="how" id="how" aria-label="How it works">
+    <div class="shead"><h2>How a coin is born</h2><span class="micro">tap a step</span></div>
+    <div class="how-grid"><div class="how-steps" role="tablist">${STEPS.map((s2, i) => `<button type="button" role="tab" class="how-step ${i === 0 ? 'on' : ''}" data-step="${i}" aria-selected="${i === 0}"><span class="how-n mono">${i + 1}</span><span class="grow"><b>${s2[0]}</b><span class="how-txt">${s2[1]}</span></span><i class="how-bar"><i></i></i></button>`).join('')}</div>
+    <div class="how-stage panel"><svg viewBox="0 0 320 170" id="howSvg" aria-hidden="true">${SCENES[0]}</svg><a class="btn primary" href="#/launch">Launch a coin</a></div></div></section>`;
+}
+let howTimer = null;
+function bindHow() {
+  const root = $('#how'); if (!root) return;
+  let i = 0, paused = false;
+  const show = n => {
+    i = n; $$('.how-step', root).forEach((b, k) => { b.classList.toggle('on', k === n); b.setAttribute('aria-selected', k === n); const bar = b.querySelector('.how-bar i'); bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = ''; });
+    const svg = $('#howSvg'); svg.classList.remove('swap'); void svg.getBoundingClientRect(); svg.innerHTML = SCENES[n]; svg.classList.add('swap');
+  };
+  root.querySelector('.how-steps').onclick = e => { const b = e.target.closest('.how-step'); if (b) { show(+b.dataset.step); paused = true; root.classList.add('paused'); } };
+  root.addEventListener('mouseenter', () => root.classList.add('hover')); root.addEventListener('mouseleave', () => root.classList.remove('hover'));
+  clearInterval(howTimer);
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) howTimer = setInterval(() => { if (!$('#how')) return clearInterval(howTimer); if (!paused && !root.classList.contains('hover')) show((i + 1) % STEPS.length); }, 5000);
+}
+
 // ---------- routing ----------
 function routeParts() { return (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean).map(decodeURIComponent); }
 let chart = null, chartSeries = null, volSeries = null, chartCoin = null, chartTf = store('sc.tf') || 300;
@@ -1080,7 +1300,7 @@ function render() {
   drawSparks();
   document.title = 'Sharecurve' + (p ? ' · ' + (p === 'coin' && S.coins[a] ? S.coins[a].sym : p === 'live' && LIVE.pairs.get(a) ? LIVE.pairs.get(a).baseToken.symbol : (NAV.find(n => n[0] === p) || [0, TITLES[p] || p])[1]) : '');
 }
-window.addEventListener('hashchange', () => { closeModal(); window.scrollTo(0, 0); render(); });
+window.addEventListener('hashchange', () => { closeModal(); closePeek(true); transition(() => { window.scrollTo(0, 0); render(); }); });
 
 // ---------- pages ----------
 function home(v) {
@@ -1108,8 +1328,10 @@ function home(v) {
   <div class="feed" id="feed" aria-label="Latest trades"></div>
   <div class="bar"><div class="seg" role="tablist" id="boardTabs">${[['live', 'Live · Solana'], ['hot', 'Hot'], ['new', 'New'], ['near', 'Near graduation'], ['grad', 'Graduated'], ['beat', 'Beating stock']].map(([k2, l]) => `<button role="tab" data-t="${k2}" class="${ui.boardTab === k2 ? 'on' : ''}">${l}</button>`).join('')}</div>
   <input class="search" id="boardQ" placeholder="Filter by name, ticker or address" value="${esc(ui.boardQ)}" aria-label="Filter coins"></div>
-  <div class="grid" id="board"></div>`;
+  <div class="grid" id="board"></div>
+  ${howItWorks()}`;
   countUp(v);
+  bindHow();
   cyclePair();
   paintDuskCard();
   const recent = coins.flatMap(c => c.trades.slice(-3).map(t => ({ c, t }))).sort((a, b) => b.t.t - a.t.t).slice(0, 14);
@@ -1182,8 +1404,16 @@ function pairs(v, sym) {
   }).sort((a, b) => b.held - a.held);
   v.innerHTML = `<div class="page-head"><span class="eyebrow">Pairs</span><h1>Every company, every app</h1><p>A coin is paired to the company that owns its app. The curve's reserve is shares of that company, tokenized one to one, so buying the coin is also buying the stock.</p></div>
   <div class="tbl-wrap"><table><thead><tr><th>Company</th><th class="r">Share price</th><th class="r">Today</th><th>Apps</th><th class="r">Coins</th><th class="r">Shares in curves</th></tr></thead><tbody>
-  ${rows.map(({ c, coins, held }) => { const ch = stockChg(c.sym); return `<tr class="link" data-go="#/pairs/${c.sym}"><td><div class="cell-co">${coLogo(c.sym)}<div><b>${c.sym}</b><div class="micro">${esc(c.name)}</div></div></div></td><td class="r mono">${money(S.stocks[c.sym].px)}</td><td class="r mono ${cls(ch)}">${pct(ch)}</td><td class="micro">${c.apps.map(esc).join(', ')}</td><td class="r mono">${coins.length}</td><td class="r mono">${held.toFixed(2)}</td></tr>`; }).join('')}
+  ${rows.map(({ c, coins, held }) => { const ch = stockChg(c.sym); return `<tr class="link xrow" data-expand="${c.sym}" aria-expanded="false" tabindex="0"><td><div class="cell-co">${coLogo(c.sym)}<div><b>${c.sym}</b><div class="micro">${esc(c.name)}</div></div></div></td><td class="r mono">${money(S.stocks[c.sym].px)}</td><td class="r mono ${cls(ch)}">${pct(ch)}</td><td class="micro">${c.apps.map(esc).join(', ')}</td><td class="r mono">${coins.length}</td><td class="r mono">${held.toFixed(2)}</td></tr>${pairExpand(c, coins)}`; }).join('')}
   </tbody></table></div>`;
+}
+function pairExpand(c, coins) {
+  const claimed = new Map(coins.map(x => [x.app, x]));
+  return `<tr class="xdetail" data-for="${c.sym}"><td colspan="6"><div class="xwrap"><div class="xin">
+    <div class="xcol"><span class="eyebrow">Apps</span><div class="xapps">${c.apps.map(a2 => claimed.has(a2) ? `<button type="button" class="chip on" data-peek="coin:${claimed.get(a2).id}">${esc(a2)} · ${esc(claimed.get(a2).sym)}</button>` : `<a class="chip" href="#/launch/${encodeURIComponent(a2)}">${esc(a2)} · launch</a>`).join('')}</div></div>
+    <div class="xcol"><span class="eyebrow">Coins</span>${coins.length ? coins.slice(0, 4).map(x => `<button type="button" class="xcoin" data-peek="coin:${x.id}">${logo(x, 'sm')}<b>${esc(x.sym)}</b><span class="mono">${money(priceUsd(x), { co: x.co })}</span><span class="mono ${cls(change24(x))}">${pct(change24(x))}</span></button>`).join('') : '<span class="micro">No coins yet. Be the first.</span>'}</div>
+    <div class="xcol xgo"><a class="btn primary" href="#/pairs/${c.sym}">Open ${c.sym} →</a></div>
+  </div></div></td></tr>`;
 }
 function pairDetail(v, sym) {
   const c = CO[sym]; const coins = Object.values(S.coins).filter(x => x.co === sym);
@@ -1200,7 +1430,10 @@ function unclaimed(v) {
   const claimed = new Set(Object.values(S.coins).map(c => c.app));
   const open = APPS.filter(a => !claimed.has(a.app));
   v.innerHTML = `<div class="page-head"><span class="eyebrow">Unclaimed</span><h1>${open.length} apps with no coin yet</h1><p>The first coin launched for an app takes its slot on the board. Pick one and it arrives on the launch form with the pair filled in.</p></div>
-  <div class="grid">${open.map(a => `<article class="card"><div class="row">${coLogo(a.co, '')}<div class="nm"><h3>${esc(a.app)}</h3><div class="micro mono">pairs with ${a.co}</div></div></div><div class="foot"><span>${money(S.stocks[a.co].px)} / share</span><a class="btn ghost" href="#/launch/${encodeURIComponent(a.app)}">Launch</a></div></article>`).join('')}</div>`;
+  <div class="grid">${open.map(a => { const n = Object.values(S.coins).filter(x => x.co === a.co).length; return `<article class="flip" tabindex="0" role="button" aria-pressed="false" aria-label="${esc(a.app)}, tap to see launch details"><div class="flip-in">
+    <div class="face front card"><div class="row">${coLogo(a.co, '')}<div class="nm"><h3>${esc(a.app)}</h3><div class="micro mono">pairs with ${a.co}</div></div><span class="flip-hint" aria-hidden="true">↻</span></div><div class="flip-art">${logo({ sym: a.app.replace(/[^A-Za-z]/g, '').slice(0, 5).toUpperCase(), co: a.co, custom: true, id: a.app }, 'xl')}</div><div class="foot"><span>${money(S.stocks[a.co].px)} / share</span><span>tap to flip</span></div></div>
+    <div class="face back card"><span class="eyebrow">${esc(a.app)} → ${a.co}</span><p>The first coin for ${esc(a.app)} trades against ${esc(CO[a.co].name)} shares. ${n ? `${n} other ${a.co} coin${n > 1 ? 's are' : ' is'} live.` : `No ${a.co} coin is live yet.`}</p><div class="bar" style="margin:0"><a class="btn primary" href="#/launch/${encodeURIComponent(a.app)}">Launch ${esc(a.app)}</a><button class="btn ghost" type="button" data-unflip>Back</button></div></div>
+  </div></article>`; }).join('')}</div>`;
 }
 
 function beat(v) {
@@ -1253,7 +1486,7 @@ function launch(v, preApp) {
     <div class="field"><label for="lfApp"><span>App</span><span id="lfPair" class="pairtag"></span></label><select class="tx" id="lfApp">${COMPANIES.map(c => `<optgroup label="${c.sym} · ${esc(c.name)}">${c.apps.map(a => `<option value="${esc(a)}" ${a === app ? 'selected' : ''}>${esc(a)}${claimed.has(a) ? ' (has a coin)' : ''}</option>`).join('')}</optgroup>`).join('')}</select></div>
     <div class="field"><label for="lfDesc">Description</label><textarea class="ta" id="lfDesc" maxlength="200" placeholder="One line on why this coin exists">${esc(draft.desc || '')}</textarea></div>
     <div class="field"><label for="lfTax"><span>Creator tax</span><b class="mono" id="lfTaxV"></b></label><input type="range" id="lfTax" min="0" max="200" step="25" value="${draft.tax != null ? draft.tax : 50}"><span class="hint">Paid to you on every curve trade, on top of the 1% curve fee. Stops at graduation.</span></div>
-    <div class="field"><label>Image</label><div class="drop" id="lfDrop" tabindex="0" role="button" aria-label="Upload image"><span id="lfImgPrev">${logo({ sym: 'IMG', co: appCo(app) || 'META' })}</span><span><b>Drop an image or click</b><br><span class="hint">PNG, JPG, GIF or WebP. Cropped square to 160px.</span></span></div><input type="file" id="lfFile" accept="image/*" hidden></div>
+    <div class="field"><label>Image</label><div class="drop" id="lfDrop" tabindex="0" role="button" aria-label="Upload image"><span id="lfImgPrev">${logo({ sym: 'IMG', co: appCo(app) || 'META', custom: true })}</span><span><b>Drop an image or click</b><br><span class="hint">PNG, JPG, GIF or WebP. Cropped square to 160px.</span></span></div><input type="file" id="lfFile" accept="image/*" hidden></div>
     <div class="field"><label for="lfBuy"><span>First buy (optional)</span><span id="lfBuyGet" class="mono"></span></label><div class="inp"><input id="lfBuy" inputmode="decimal" placeholder="0" value="${esc(draft.buy || '')}"><span>USD</span></div></div>
     <div class="err" id="lfErr"></div>
     <button class="btn primary big" type="submit" style="width:100%">Launch coin</button>
@@ -1270,12 +1503,12 @@ function launch(v, preApp) {
     $('#lfPair').textContent = d.app + ' → ' + co;
     $('#lfTaxV').textContent = (d.tax / 100).toFixed(2) + '%';
     $('#lfStart').textContent = money(SEED_USD, { compact: 1 }) + ' in ' + co;
-    const fake = { id: 'preview', name: d.name || 'Your coin', sym: d.sym || 'TICKER', app: d.app, co, img: d.img, trades: [], pxLaunchUsd: SEED_USD / VT0, vq: SEED_USD / S.stocks[co].px, vt: VT0, vq0: SEED_USD / S.stocks[co].px, sold: 0, graduated: false, tax: d.tax / 1e4 };
+    const fake = { id: 'preview', custom: true, name: d.name || 'Your coin', sym: d.sym || 'TICKER', app: d.app, co, img: d.img, trades: [], pxLaunchUsd: SEED_USD / VT0, vq: SEED_USD / S.stocks[co].px, vt: VT0, vq0: SEED_USD / S.stocks[co].px, sold: 0, graduated: false, tax: d.tax / 1e4 };
     const usd = parseFloat(d.buy) || 0;
     const q = usd > 0 ? quoteBuy(fake, usd / S.stocks[co].px) : null;
     $('#lfBuyGet').textContent = q ? '≈ ' + tok(q.out) + ' ' + (d.sym || 'coins') : '';
-    $('#lfImgPrev').innerHTML = logo({ sym: d.sym || 'IMG', co, img: d.img });
-    $('#lfPrev').innerHTML = `<div class="eyebrow" style="margin-bottom:10px">Preview</div>` + card(fake).replace('data-go="#/coin/preview"', '').replace(/<button class="starbtn[\s\S]*?<\/button>/, '');
+    $('#lfImgPrev').innerHTML = logo({ sym: d.sym || 'IMG', co, img: d.img, custom: true });
+    $('#lfPrev').innerHTML = `<div class="eyebrow" style="margin-bottom:10px">Preview</div>` + card(fake).replace('data-peek="coin:preview"', '').replace(/<button class="starbtn[\s\S]*?<\/button>/, '');
     drawSparks();
   };
   f.oninput = prev; f.onchange = prev;
@@ -1304,6 +1537,7 @@ function launch(v, preApp) {
     if (!W) return openConnect(() => { const nf = $('#lf'); if (nf) nf.requestSubmit(); });
     if (usd > W.usd) return err.textContent = `First buy is more than your ${money(W.usd)} balance.`;
     const c = makeCoin(S, { name: d.name, sym: d.sym, app: d.app, co: appCo(d.app), desc: d.desc, tax: d.tax / 1e4, img: d.img, creator: W.addr });
+    c.custom = true;
     W.launched = (W.launched || []).concat(c.id);
     if (usd > 0) { const q = tradeBuy(S, c, usd / S.stocks[c.co].px, W.addr); if (q) W.usd -= usd - q.refund * S.stocks[c.co].px; }
     store('sc.draft', null); save(); toast(`${c.sym} is live, paired with ${c.co}`);
@@ -1418,7 +1652,7 @@ function coin(v, id) {
   const c = S.coins[id];
   if (!c) { v.innerHTML = `<div class="empty"><h2>Coin not found</h2><p>It may have been removed by a demo reset.</p><a class="btn primary" href="#/">Back to the board</a></div>`; return; }
   let side = 'buy';
-  v.innerHTML = `<div class="coin-top">${logo(c, 'lg')}<div class="t"><div class="tags"><span class="pairtag">${esc(c.sym)} / ${c.co}</span><span class="pill">${esc(c.app)}</span>${c.graduated ? '<span class="pill grad">Graduated · pool locked</span>' : ''}${c.tax ? `<span class="pill">creator tax ${(c.tax * 100).toFixed(2)}%</span>` : ''}</div><h1 style="font-size:clamp(28px,4vw,40px)">${esc(c.name)}</h1></div>
+  v.innerHTML = `<div class="coin-top"><span class="vt-logo">${logo(c, 'lg')}</span><div class="t"><div class="tags"><span class="pairtag">${esc(c.sym)} / ${c.co}</span><span class="pill">${esc(c.app)}</span>${c.graduated ? '<span class="pill grad">Graduated · pool locked</span>' : ''}${c.tax ? `<span class="pill">creator tax ${(c.tax * 100).toFixed(2)}%</span>` : ''}</div><h1 style="font-size:clamp(28px,4vw,40px)">${esc(c.name)}</h1></div>
     <div class="price"><div class="p" id="cPx">${money(priceUsd(c), { co: c.co })}</div><div class="mono micro" id="cCh"></div></div>${starBtn(c.id)}<button class="icon-btn share-btn" id="shareBtn" type="button" title="Copy link to this coin" aria-label="Copy link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button></div>
   <div class="coin-grid"><div>
     <div class="panel"><div class="tf"><div class="seg" id="tfSeg">${[[60, '1m'], [300, '5m'], [900, '15m'], [3600, '1h']].map(([s, l]) => `<button data-s="${s}" class="${chartTf === s ? 'on' : ''}">${l}</button>`).join('')}</div><span class="micro mono">price in ${ui.ccy === 'SHARES' ? c.co + ' shares' : ui.ccy}</span></div><div class="chart-box" id="chartBox"></div></div>
@@ -1603,6 +1837,7 @@ function loop() {
   tickBots();
   if (ticks % 2 === 0) { tickStocks(); const r0 = routeParts()[0]; if (r0 === 'coin') { const c = S.coins[routeParts()[1]]; if (c) refreshCoin(c); } }
   if (ticks % 10 === 0) { renderTape(); save(); }
+  refreshPeek();
 }
 
 // ---------- boot ----------
@@ -1618,7 +1853,8 @@ function boot() {
   liveRefresh(true);
   setInterval(() => liveRefresh(), 15000);
   window.addEventListener('resize', () => { clearTimeout(boot.rt); boot.rt = setTimeout(() => { drawSparks(); if ($('#curveCv')) drawCurve($('#curveCv')); }, 120); });
-  document.addEventListener('keydown', e => { const cd = e.target.closest && e.target.closest('.card[data-go]'); if (cd && e.key === 'Enter') location.hash = cd.dataset.go; });
+  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-expand], .flip')) { e.preventDefault(); e.target.click(); return; } });
+  document.addEventListener('keydown', e => { const cd = e.target.closest && e.target.closest('.card[data-peek]'); if (cd && (e.key === 'Enter' || e.key === ' ') && e.target === cd) { e.preventDefault(); openPeek(cd.dataset.peek, cd); } });
 }
 boot();
 })();
