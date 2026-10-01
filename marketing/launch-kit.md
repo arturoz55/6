@@ -47,7 +47,7 @@ A coin can't just ride the dollar. It has to beat its stock.
 
 ¿Qué es Kruv?
 
-Un launchpad donde cada moneda cotiza en acciónes de la empresa detrás de una app. Una moneda de Instagram cotiza contra META. Una de YouTube, contra GOOGL.
+Un launchpad donde cada moneda cotiza en acciones de la empresa detrás de una app. Una moneda de Instagram cotiza contra META. Una de YouTube, contra GOOGL.
 
 No basta con subir en dólares. Tiene que ganarle a su acción.
 
@@ -99,7 +99,7 @@ When you buy, your dollars buy shares of the paired company first, then those sh
 
 La curva no guarda dólares. Guarda la acción.
 
-Al comprar, tus dólares compran primero acciónes de la empresa emparejada y después esas acciónes compran la moneda. Vender hace el mismo camino al revés.
+Al comprar, tus dólares compran primero acciones de la empresa emparejada y después esas acciones compran la moneda. Vender hace el mismo camino al revés.
 
 ### 5. `cards/kruv-5.png`
 
@@ -117,7 +117,7 @@ Dos patas, una posición.
 
 Retorno en $ = (1 + moneda vs acción) x (1 + acción vs $) - 1
 
-Una moneda puede subir contra META mientras META baja. El ranking ordena por la primera pata: cuanto le gana a su propia acción.
+Una moneda puede subir contra META mientras META baja. El ranking ordena por la primera pata: cuánto le gana a su propia acción.
 
 ### 6. `cards/kruv-6.png`
 
@@ -132,7 +132,7 @@ Launching a coin is free
 
 **Spanish (189)**
 
-Las comisiónes de Kruv se fijan al lanzar:
+Las comisiones de Kruv se fijan al lanzar:
 
 1% de comisión en cada compra y venta
 0-2% de tasa del creador, fija y con tope
