@@ -29,6 +29,16 @@ python3 -m http.server 8000
 - **Why not GMGN directly:** GMGN has no public API, so each token simply links to its GMGN page.
 - **Fallback:** when the browser can't reach the APIs (for example inside a sandboxed preview), the site loads `live-snapshot.json`, a real capture, and labels it as a snapshot. Refresh it with `python3 tools-snapshot.py`.
 
+## Zcash (ZEC)
+
+`#/zcash`, plus a spotlight banner on the board:
+- **Live data:** price and 24h stats from Coinbase Exchange (Binance as fallback), refreshed every 20 seconds. Candles for 1D, 7D, 30D and 1Y. Live block height from Blockchair.
+- **"What the chain sees":** the same payment shown as transparent or shielded.
+- **Shielded pools:** Sprout, Sapling and Orchard.
+- **Address format checker:** recognises t1, t3, tex1, zs1, u1 and zc addresses.
+- **Supply and halvings:** issued supply computed from the block height and the emission schedule (estimate), and the next halving at block 4,406,400.
+- **Paper trading** with demo cash.
+
 ## Wallets
 
 - **EVM:** MetaMask, Phantom (EVM), Coinbase Wallet, Rabby, Brave and any wallet that announces itself through EIP-6963, with `window.ethereum` as a fallback.

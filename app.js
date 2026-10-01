@@ -315,7 +315,7 @@ let toastT;
 function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2600); }
 
 // ---------- header ----------
-const NAV = [['', 'Board'], ['pairs', 'Pairs'], ['unclaimed', 'Unclaimed'], ['beat', 'Scoreboard'], ['watch', 'Watchlist'], ['legs', 'Two legs'], ['launch', 'Launch'], ['account', 'Account'], ['docs', 'Docs']];
+const NAV = [['', 'Board'], ['zcash', 'Zcash'], ['pairs', 'Pairs'], ['unclaimed', 'Unclaimed'], ['beat', 'Scoreboard'], ['watch', 'Watchlist'], ['legs', 'Two legs'], ['launch', 'Launch'], ['account', 'Account'], ['docs', 'Docs']];
 const TITLES = { treasury: 'Treasury', security: 'Security', coin: 'Coin' };
 function renderNav() {
   const cur = routeParts()[0] || '';
@@ -806,7 +806,8 @@ function openFind() {
       .map(p => ({ go: '#/live/' + p.baseToken.address, html: `${liveImg(p, 'sm')}<span class="grow"><b>${esc(p.baseToken.name)}</b> <span class="muted mono">${esc(p.baseToken.symbol)}</span><br><span class="micro">Solana · ${LIVE.source === 'live' ? 'live' : 'snapshot'} · MC ${usdC(lmc(p))}</span></span><span class="mono ${cls(lchg(p))}">${pct(lchg(p))}</span>` }));
     const cos = COMPANIES.filter(c => q && (c.sym + ' ' + c.name + ' ' + c.apps.join(' ')).toLowerCase().includes(q)).slice(0, 4)
       .map(c => ({ go: '#/pairs/' + c.sym, html: `${coLogo(c.sym)}<span class="grow"><b>${c.sym}</b> <span class="muted">${esc(c.name)}</span><br><span class="micro">${c.apps.length} apps</span></span><span class="pill">Company</span>` }));
-    rows = lv.concat(coins, cos); sel = clamp(sel, 0, Math.max(0, rows.length - 1));
+    const zrow = !q || /^(z|ze|zec|zc|zca|zcas|zcash|privacy)/.test(q) ? [{ go: '#/zcash', html: `${zecLogo(28)}<span class="grow"><b>Zcash</b> <span class="muted mono">ZEC</span><br><span class="micro">Privacy coin · ${ZEC.source === 'live' ? 'live' : 'snapshot'}</span></span><span class="mono ${cls(zecChg())}">${ZEC.price ? money(ZEC.price) : ''}</span>` }] : [];
+    rows = zrow.concat(lv, coins, cos); sel = clamp(sel, 0, Math.max(0, rows.length - 1));
     $('#findList').innerHTML = rows.length ? rows.map((r, i) => `<div class="find-row ${i === sel ? 'on' : ''}" data-i="${i}">${r.html}</div>`).join('') : `<div class="empty" style="margin:8px">No match. <a class="btn ghost" href="#/launch" data-close>Launch it</a></div>`;
   };
   inp.oninput = () => { sel = 0; paint(); };
@@ -822,7 +823,8 @@ function openFind() {
 
 // ---------- tape ----------
 function renderTape() {
-  const items = liveSorted(liveAll()).slice(0, 10).map(p => { const ch = lchg(p); return `<a class="tape-item" href="#/live/${esc(p.baseToken.address)}"><b>${esc(p.baseToken.symbol)}</b>${money(lp(p))}<span class="${cls(ch)}">${pct(ch)}</span></a>`; }).concat(COMPANIES.map(c => { const ch = stockChg(c.sym); return `<span class="tape-item"><b>${c.sym}</b>${money(S.stocks[c.sym].px)}<span class="${cls(ch)}">${pct(ch)}</span></span>`; })
+  const zec = ZEC.price ? `<a class="tape-item" href="#/zcash"><b>ZEC</b>${money(ZEC.price)}<span class="${cls(zecChg())}">${pct(zecChg())}</span></a>` : '';
+  const items = zec + liveSorted(liveAll()).slice(0, 10).map(p => { const ch = lchg(p); return `<a class="tape-item" href="#/live/${esc(p.baseToken.address)}"><b>${esc(p.baseToken.symbol)}</b>${money(lp(p))}<span class="${cls(ch)}">${pct(ch)}</span></a>`; }).concat(COMPANIES.map(c => { const ch = stockChg(c.sym); return `<span class="tape-item"><b>${c.sym}</b>${money(S.stocks[c.sym].px)}<span class="${cls(ch)}">${pct(ch)}</span></span>`; })
     .concat(Object.values(S.coins).sort((a, b) => vol24(b) - vol24(a)).slice(0, 8).map(c => { const ch = change24(c); return `<a class="tape-item" href="#/coin/${c.id}"><b>${esc(c.sym)}</b><span class="muted">/${c.co}</span><span class="${cls(ch)}">${pct(ch)}</span></a>`; })))
     .join('');
   $('#tapeTrack').innerHTML = items + items;
@@ -1285,17 +1287,266 @@ function bindHow() {
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) howTimer = setInterval(() => { if (!$('#how')) return clearInterval(howTimer); if (!paused && !root.classList.contains('hover')) show((i + 1) % STEPS.length); }, 5000);
 }
 
+// ---------- Zcash (ZEC) ----------
+// Price, 24h stats and candles from Coinbase Exchange (Binance as a fallback), block height from
+// Blockchair. All three are public and allow browser requests. When none can be reached, the page
+// uses the zec block in live-snapshot.json and says so.
+const ZEC_LOGO = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24"><path fill="#ECB244" d="M11.19 15.316h5.547v3.316H13.42V21h-2.844v-2.368H7.263v-3.01l5.521-6.938h-5.52V5.368h3.313V3h2.844v2.368h3.316v3.01z"/></svg>';
+const ZEC = { price: 0, open: 0, high: 0, low: 0, vol: 0, height: 0, at: 0, heightAt: 0, source: 'none', candles: {}, busy: false, tf: store('sc.zecTf') || '7d' };
+const ZTF = { '1d': [300, 864e5], '7d': [3600, 7 * 864e5], '30d': [21600, 30 * 864e5], '1y': [86400, 300 * 864e5] };
+const BLOSSOM = 653600, H1 = 1046400, H2 = 2726400, HALVING = 1680000;
+// ZEC issued up to a block height: slow start, 12.5 ZEC per 150 s block until Blossom,
+// then 75 s blocks at half the reward, halving every 1,680,000 blocks.
+function zecIssued(h) {
+  if (!h) return 0;
+  let s = 125000 + Math.max(0, Math.min(h, BLOSSOM - 1) - 20000) * 12.5;
+  if (h >= BLOSSOM) s += (Math.min(h, H1 - 1) - BLOSSOM + 1) * 6.25;
+  let start = H1, reward = 3.125;
+  while (h >= start) { s += (Math.min(h, start + HALVING - 1) - start + 1) * reward; start += HALVING; reward /= 2; }
+  return s;
+}
+const zecReward = h => { if (h < BLOSSOM) return 12.5; if (h < H1) return 6.25; return 3.125 / Math.pow(2, Math.floor((h - H1) / HALVING)); };
+const zecNextHalving = h => h < H1 ? H1 : H1 + (Math.floor((h - H1) / HALVING) + 1) * HALVING;
+function zecHeightNow() { return ZEC.height ? ZEC.height + Math.floor((now() - ZEC.heightAt) / 75000) : 0; }
+const zecChg = () => ZEC.open ? ZEC.price / ZEC.open - 1 : 0;
+async function zecRefresh(force) {
+  if (ZEC.busy || (document.hidden && !force)) return;
+  ZEC.busy = true;
+  try {
+    try {
+      const [t, s2] = await Promise.all([getJSON('https://api.exchange.coinbase.com/products/ZEC-USD/ticker'), getJSON('https://api.exchange.coinbase.com/products/ZEC-USD/stats')]);
+      Object.assign(ZEC, { price: +t.price, open: +s2.open, high: +s2.high, low: +s2.low, vol: +s2.volume });
+    } catch (e) {
+      const b = await getJSON('https://data-api.binance.vision/api/v3/ticker/24hr?symbol=ZECUSDT');
+      Object.assign(ZEC, { price: +b.lastPrice, open: +b.openPrice, high: +b.highPrice, low: +b.lowPrice, vol: +b.volume });
+    }
+    ZEC.prev = ZEC.last; ZEC.last = ZEC.price;
+    ZEC.at = now(); ZEC.source = 'live';
+    if (now() - ZEC.heightAt > 60e3) getJSON('https://api.blockchair.com/zcash/stats').then(d => { ZEC.height = d.data.best_block_height; ZEC.heightAt = now(); zecPaint(); }).catch(() => {});
+  } catch (e) {
+    if (ZEC.source !== 'live') await zecSnapshot();
+  } finally { ZEC.busy = false; zecPaint(); }
+}
+async function zecSnapshot() {
+  try { const s = await getJSON('live-snapshot.json', 8000); const z = s.zec; if (!z) throw new Error('no zec');
+    const cs = {}; Object.entries(z.candles || {}).forEach(([tf, rows]) => { cs[tf] = rows.filter(r => r[0] * 1000 >= z.at - ZTF[tf][1]); });
+    Object.assign(ZEC, { price: z.price, open: z.open, high: z.high, low: z.low, vol: z.vol, height: z.height, heightAt: z.at, at: z.at, candles: cs, source: 'snapshot' });
+  } catch (e) { ZEC.source = 'down'; }
+}
+async function zecCandles(tf) {
+  if (ZEC.source !== 'live' && ZEC.candles[tf]) return ZEC.candles[tf];
+  const [g, span] = ZTF[tf];
+  try {
+    const rows = await getJSON(`https://api.exchange.coinbase.com/products/ZEC-USD/candles?granularity=${g}&start=${new Date(now() - span).toISOString()}&end=${new Date().toISOString()}`);
+    ZEC.candles[tf] = rows.map(r => [r[0], r[3], r[2], r[1], r[4], r[5]]).sort((a, b) => a[0] - b[0]); // [t, o, h, l, c, v]
+  } catch (e) {
+    try { const iv = { 300: '5m', 3600: '1h', 21600: '6h', 86400: '1d' }[g];
+      const k = await getJSON(`https://data-api.binance.vision/api/v3/klines?symbol=ZECUSDT&interval=${iv}&limit=${Math.min(1000, Math.ceil(span / g / 1000))}`);
+      ZEC.candles[tf] = k.map(r => [r[0] / 1000, +r[1], +r[2], +r[3], +r[4], +r[5]]);
+    } catch (e2) { /* keep whatever we had */ }
+  }
+  return ZEC.candles[tf] || [];
+}
+function zecLogo(size = 40) { return `<span class="zlogo" style="width:${size}px;height:${size}px">${ZEC_LOGO}</span>`; }
+function zecStatus() {
+  if (ZEC.source === 'live') return `<span class="live-dot"></span>Live from Coinbase · updated <b data-zupd>${ago(ZEC.at)}</b> ago`;
+  if (ZEC.source === 'snapshot') return `<span class="snap-dot"></span>Snapshot from ${new Date(ZEC.at).toLocaleString()}. This preview can't reach live APIs.`;
+  if (ZEC.source === 'down') return 'Zcash prices did not load. <button class="btn ghost" type="button" data-zec-retry>Retry</button>';
+  return '<span class="live-dot"></span>Loading Zcash…';
+}
+// home banner
+function zecBanner() {
+  return `<a class="zban" href="#/zcash" id="zban"><span class="zban-glow" aria-hidden="true"></span>${zecLogo(46)}
+    <span class="zban-t"><span class="eyebrow">Spotlight</span><b>Zcash <span class="muted mono">ZEC</span></b><span class="micro">Private payments with zero-knowledge proofs</span></span>
+    <canvas class="zban-spark" id="zbanSpark" aria-hidden="true"></canvas>
+    <span class="zban-px"><b class="mono" data-zpx>${ZEC.price ? money(ZEC.price) : '—'}</b><span class="mono micro ${cls(zecChg())}" data-zch>${ZEC.price ? pct(zecChg()) : ''}</span></span>
+    <span class="zban-go">Explore →</span></a>`;
+}
+async function paintZecBanner() {
+  const cv = $('#zbanSpark'); if (!cv) return;
+  const rows = await zecCandles('1d'); if (!$('#zbanSpark')) return;
+  drawSparkTP($('#zbanSpark'), rows.map(r => ({ t: r[0] * 1000, p: r[4] })));
+}
+function zecPaint() {
+  $$('[data-zpx]').forEach(e => { const old = e.textContent; e.textContent = ZEC.price ? money(ZEC.price) : '—'; if (old !== e.textContent && ZEC.prev) { const c = e.closest('.zban, .ztop'); if (c) { c.classList.remove('flash-up', 'flash-down'); void c.offsetWidth; c.classList.add(ZEC.price >= ZEC.prev ? 'flash-up' : 'flash-down'); } } });
+  $$('[data-zch]').forEach(e => { e.textContent = ZEC.price ? pct(zecChg()) : ''; e.className = 'mono micro ' + cls(zecChg()); });
+  const st = $('#zecStatus'); if (st) st.innerHTML = zecStatus();
+  if (routeParts()[0] === 'zcash') zecPagePaint();
+  renderTape();
+}
+setInterval(() => { const u = $('[data-zupd]'); if (u && ZEC.at) u.textContent = ago(ZEC.at); const hb = $('[data-zheight]'); if (hb && ZEC.height) hb.textContent = zecHeightNow().toLocaleString(); }, 1000);
+document.addEventListener('click', e => { if (e.target.closest('[data-zec-retry]')) { ZEC.source = 'none'; zecPaint(); zecRefresh(true); } });
+
+// what the chain sees: the same payment, transparent vs shielded
+const ZTX = [
+  ['From', 't1Qx7…Hd3vK', 'The sender. On a transparent address anyone can see it and follow every past payment from it.'],
+  ['To', 't1RmA…9pLwe', 'The recipient. Shielded, the chain stores only an encrypted note that the recipient can find with their viewing key.'],
+  ['Amount', '12.5 ZEC', 'How much moved. Shielded amounts are hidden; a zero-knowledge proof shows that no ZEC was created out of thin air.'],
+  ['Memo', 'Rent for October', 'A 512-byte encrypted memo. It only exists on shielded payments and only the recipient can read it.'],
+];
+const ZPOOLS = [
+  ['Sprout', '2016', 'The original shielded pool. Legacy now; funds can only move out of it.'],
+  ['Sapling', '2018', 'Made shielded payments fast enough for phones. Addresses start with zs1.'],
+  ['Orchard', '2022', 'Uses Halo 2 proofs, which need no trusted setup. Reached through unified addresses that start with u1.'],
+];
+function scramble(el, text, done) {
+  const glyphs = '0123456789abcdef#%&*';
+  let f = 0; const max = 14;
+  const tick = () => { f++; el.textContent = text.split('').map((ch, i) => ch === ' ' ? ' ' : (f < max * (i / text.length) + 4 ? glyphs[Math.floor(Math.random() * glyphs.length)] : ch)).join(''); if (f < max + 4) requestAnimationFrame(tick); else { el.textContent = text; if (done) done(); } };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = text; return done && done(); }
+  tick();
+}
+// address checker
+function zecAddrType(a) {
+  a = a.trim();
+  if (!a) return null;
+  const b58 = /^[1-9A-HJ-NP-Za-km-z]+$/, b32 = /^[02-9ac-hj-np-z]+$/;
+  if (/^t1/.test(a) && a.length === 35 && b58.test(a)) return ['Transparent (P2PKH)', 'transparent', 'Works like a Bitcoin address. Balance and history are public on the chain.'];
+  if (/^t3/.test(a) && a.length === 35 && b58.test(a)) return ['Transparent (P2SH, multisig or script)', 'transparent', 'A script address. Public, like any transparent address.'];
+  if (/^tex1/.test(a) && b32.test(a.slice(4))) return ['TEX address (ZIP 320)', 'transparent', 'A transparent address that only accepts funds coming from transparent sources, used by some exchanges.'];
+  if (/^zs1/.test(a) && a.length === 78 && b32.test(a.slice(3))) return ['Sapling shielded', 'shielded', 'Payments to this address hide the sender, the receiver, the amount and the memo.'];
+  if (/^u1/.test(a) && a.length >= 100 && b32.test(a.slice(2))) return ['Unified address', 'shielded', 'Bundles several receivers (Orchard, Sapling, transparent) in one string. Wallets pick the most private one both sides support.'];
+  if (/^zc/.test(a) && a.length === 95 && b58.test(a)) return ['Sprout shielded (legacy)', 'legacy', 'The original 2016 shielded format. Most wallets no longer send to it.'];
+  if (/^(zs1|u1|t1|t3|tex1|zc)/.test(a)) return ['Looks like Zcash, but the length or characters are off', 'bad', 'Check that the whole address was copied. A single missing character changes it.'];
+  return ['Not a Zcash address', 'bad', 'Zcash addresses start with t1, t3, tex1, zs1, u1 or (very old) zc.'];
+}
+const ZEC_EXAMPLES = [['t1 transparent', 't1' + 'Rq2yWvLxN8a3mKpT6uYbZcD4eF5gHjJk1'.slice(0, 33)], ['zs1 Sapling', 'zs1' + 'qw3e5r7t9y0u2i4o6p8a3s5d7f9g0h2j4k6l8z3x5c7v9b0n2m4q6w8e3r5t7y9u0i2o4p6a8s3d5'.slice(0, 75).replace(/[1bio]/g, 'x')], ['u1 unified', 'u1' + 'a'.repeat(4) + 'q3w5e7r9t0y2u4i6o8p3a5s7d9f0g2h4j6k8l3z5x7c9v0b2n4m6q8w3e5r7t9y0u2i4o6p8a3s5d7f9g0h2j4k6l8z3x5c7v9b0n2m4'.replace(/[1bio]/g, 'x').slice(0, 104)]];
+
+function zcashPage(v) {
+  const h = zecHeightNow();
+  v.innerHTML = `<div class="coin-top ztop"><span class="vt-logo">${zecLogo(58)}</span><div class="t"><div class="tags"><span class="pairtag">ZEC / USD</span><span class="pill">Proof of work</span><span class="pill grad">Privacy</span><span class="pill" id="zSrc">${ZEC.source === 'live' ? 'live' : ZEC.source}</span></div><h1 style="font-size:clamp(28px,4vw,40px)">Zcash</h1><span class="micro live-status" id="zecStatus">${zecStatus()}</span></div>
+    <div class="price"><div class="p" data-zpx>${ZEC.price ? money(ZEC.price) : '—'}</div><div class="mono micro ${cls(zecChg())}" data-zch>${pct(zecChg())}</div></div>${starBtn('zec')}</div>
+  <div class="stats zstats" id="zStats"></div>
+  <div class="coin-grid" style="margin-top:18px"><div>
+    <div class="panel"><div class="tf"><div class="seg" id="zTf">${Object.keys(ZTF).map(k => `<button type="button" data-tf="${k}" class="${ZEC.tf === k ? 'on' : ''}">${k.toUpperCase()}</button>`).join('')}</div><span class="micro mono" id="zChartSrc">loading chart…</span></div><div class="chart-box" id="zChart"></div></div>
+
+    <div class="panel zsee"><div class="bar" style="justify-content:space-between;margin-bottom:12px"><h3>What the chain sees</h3><div class="seg" id="zMode"><button type="button" data-m="t" class="on">Transparent</button><button type="button" data-m="z">Shielded</button></div></div>
+      <div class="ztx" id="zTx">${ZTX.map((r, i) => `<button type="button" class="zrow" data-i="${i}"><span class="zk">${r[0]}</span><span class="zv mono" data-v="${i}">${esc(r[1])}</span><span class="zlock" aria-hidden="true">🔒</span></button>`).join('')}</div>
+      <div class="zexplain" id="zExplain"><b>Tap a field</b> to see what it reveals. Then switch to Shielded and watch it disappear from public view.</div>
+      <div class="zproof" id="zProof" hidden><svg viewBox="0 0 40 40" width="34" height="34" aria-hidden="true"><path d="M20 4l13 5v10c0 9-6 15-13 17C13 34 7 28 7 19V9z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M14 20l4.5 4.5L27 16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" class="zcheck"/></svg><span><b>Valid, and private.</b> A zk-SNARK proves the inputs equal the outputs and the sender owns the funds, without revealing any of them.</span></div>
+    </div>
+
+    <div class="panel"><h3 style="margin-bottom:10px">Shielded pools</h3><div class="zpools">${ZPOOLS.map((p, i) => `<button type="button" class="zpool" data-p="${i}" aria-expanded="false"><span class="zpool-h"><b>${p[0]}</b><span class="mono micro">${p[1]}</span><span class="zpool-arrow" aria-hidden="true">›</span></span><span class="zpool-b"><span>${p[2]}</span></span></button>`).join('')}</div></div>
+  </div><div>
+    <div class="panel trade"><div class="eyebrow" style="margin-bottom:10px">Paper trade ZEC at the live price</div>
+      <div class="seg" id="zSide"><button class="on buy" data-side="buy" type="button">Buy</button><button class="sell" data-side="sell" type="button">Sell</button></div>
+      <div class="field"><label for="zAmt"><span id="zLbl">You pay</span><span id="zBal" class="mono"></span></label><div class="inp"><input id="zAmt" inputmode="decimal" placeholder="0.00" autocomplete="off"><span id="zUnit">USD</span></div><div class="quick" id="zQuick"></div></div>
+      <div class="quote" id="zQuote"></div><div class="err" id="zErr"></div>
+      <button class="btn primary big" id="zGo" type="button" style="width:100%">Paper buy ZEC</button>
+      <p class="hint" style="margin-top:10px">Uses your demo cash. To hold real ZEC, use a Zcash wallet such as Zashi or YWallet and send to a shielded address.</p></div>
+
+    <div class="panel"><h3 style="margin-bottom:8px">Check a Zcash address</h3><div class="inp"><input id="zAddr" placeholder="Paste t1…, zs1…, u1…" autocomplete="off" spellcheck="false" aria-label="Zcash address"></div>
+      <div class="quick" id="zEx">${ZEC_EXAMPLES.map(([l], i) => `<button type="button" data-ex="${i}">${l}</button>`).join('')}</div>
+      <div class="zaddr" id="zAddrOut"><span class="micro">Checks the format only. It can't tell whether the address exists or holds funds.</span></div></div>
+
+    <div class="panel"><h3 style="margin-bottom:10px">Supply and halvings</h3><div id="zSupply"></div></div>
+    <div class="panel"><div class="bar" style="margin:0;flex-wrap:wrap"><a class="btn ghost" href="https://z.cash/" target="_blank" rel="noopener noreferrer">z.cash ↗</a><a class="btn ghost" href="https://blockchair.com/zcash" target="_blank" rel="noopener noreferrer">Explorer ↗</a><a class="btn ghost" href="https://www.coinbase.com/price/zcash" target="_blank" rel="noopener noreferrer">Coinbase ↗</a></div></div>
+  </div></div>`;
+  // chart
+  const loadChart = async () => {
+    const box = $('#zChart'); if (!box) return;
+    const rows = await zecCandles(ZEC.tf); if (!$('#zChart')) return;
+    destroyLiveChart();
+    if (!window.LightweightCharts || !rows.length) { box.innerHTML = '<canvas id="zSpark" style="width:100%;height:100%"></canvas>'; drawSparkTP($('#zSpark'), rows.map(r => ({ t: r[0] * 1000, p: r[4] }))); $('#zChartSrc').textContent = rows.length ? 'price line' : 'no chart data'; return; }
+    box.innerHTML = ''; const col = chartColors();
+    liveChart = LightweightCharts.createChart(box, { autoSize: true, layout: { background: { type: 'solid', color: 'transparent' }, textColor: col.ink, fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }, grid: { vertLines: { color: col.rule }, horzLines: { color: col.rule } }, rightPriceScale: { borderColor: col.rule }, timeScale: { borderColor: col.rule, timeVisible: ZEC.tf === '1d' || ZEC.tf === '7d', secondsVisible: false }, localization: { locale: 'en-US' } });
+    liveSeries = liveChart.addCandlestickSeries({ upColor: col.up, downColor: col.down, borderVisible: false, wickUpColor: col.up, wickDownColor: col.down });
+    liveSeries.priceScale().applyOptions({ scaleMargins: { top: .08, bottom: .22 } });
+    liveVol = liveChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'v' }); liveChart.priceScale('v').applyOptions({ scaleMargins: { top: .82, bottom: 0 } });
+    liveSeries.setData(rows.map(r => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4] })));
+    liveVol.setData(rows.map(r => ({ time: r[0], value: r[5], color: (r[4] >= r[1] ? col.up : col.down) + '66' })));
+    liveChart.timeScale().fitContent();
+    $('#zChartSrc').textContent = ZEC.source === 'live' ? 'candles from Coinbase' : 'candles from snapshot';
+  };
+  $('#zTf').onclick = e => { const b = e.target.closest('button'); if (!b) return; ZEC.tf = b.dataset.tf; store('sc.zecTf', ZEC.tf); $$('#zTf button').forEach(x => x.classList.toggle('on', x === b)); loadChart(); };
+  loadChart();
+  // transparent vs shielded
+  let mode = 't', sel = -1;
+  const explain = () => { const ex = $('#zExplain'); if (sel < 0) return; ex.classList.remove('pop'); void ex.offsetWidth; ex.classList.add('pop'); ex.innerHTML = `<b>${ZTX[sel][0]}</b> · ${mode === 't' ? '<span class="down">public</span>' : '<span class="up">hidden</span>'}<br>${ZTX[sel][2]}`; };
+  $('#zMode').onclick = e => {
+    const b = e.target.closest('button'); if (!b || b.dataset.m === mode) return; mode = b.dataset.m;
+    $$('#zMode button').forEach(x => x.classList.toggle('on', x === b));
+    $('#zTx').classList.toggle('shielded', mode === 'z');
+    $$('#zTx .zv').forEach((el, i) => scramble(el, mode === 'z' ? Array.from({ length: Math.max(10, ZTX[i][1].length) }, () => '•').join('') : ZTX[i][1]));
+    const pr = $('#zProof'); pr.hidden = mode !== 'z'; if (mode === 'z') { pr.classList.remove('in'); void pr.offsetWidth; pr.classList.add('in'); }
+    explain();
+  };
+  $('#zTx').onclick = e => { const r = e.target.closest('.zrow'); if (!r) return; sel = +r.dataset.i; $$('#zTx .zrow').forEach(x => x.classList.toggle('on', x === r)); explain(); };
+  // pools accordion
+  $('.zpools').onclick = e => { const p = e.target.closest('.zpool'); if (!p) return; const open = p.getAttribute('aria-expanded') !== 'true'; $$('.zpool').forEach(x => x.setAttribute('aria-expanded', 'false')); p.setAttribute('aria-expanded', open); };
+  // address checker
+  const check = () => {
+    const out = $('#zAddrOut'), r = zecAddrType($('#zAddr').value);
+    if (!r) { out.innerHTML = '<span class="micro">Checks the format only. It can\'t tell whether the address exists or holds funds.</span>'; return; }
+    out.innerHTML = `<div class="zres ${r[1]}"><span class="zres-ic" aria-hidden="true">${r[1] === 'shielded' ? '🛡' : r[1] === 'bad' ? '✕' : r[1] === 'legacy' ? '⌛' : '👁'}</span><span><b>${esc(r[0])}</b><br><span class="micro">${esc(r[2])}</span></span></div>`;
+  };
+  $('#zAddr').oninput = check;
+  $('#zEx').onclick = e => { const b = e.target.closest('button'); if (!b) return; $('#zAddr').value = ZEC_EXAMPLES[+b.dataset.ex][1]; check(); };
+  // paper trade
+  let side = 'buy'; const amt = $('#zAmt');
+  const pos = () => (W && W.paper && W.paper.zec) || { qty: 0, cost: 0 };
+  const paint = () => {
+    const px = ZEC.price, n = parseFloat(amt.value) || 0, ps = pos();
+    $('#zBal').textContent = W ? (side === 'buy' ? 'Cash ' + money(W.usd) : 'Holding ' + fmtTiny(ps.qty) + ' ZEC') : '';
+    if ($('#zQuick').dataset.side !== side) { $('#zQuick').dataset.side = side; $('#zQuick').innerHTML = side === 'buy' ? [25, 100, 500, 1000].map(x => `<button type="button" data-v="${x}">$${x}</button>`).join('') : [[.25, '25%'], [.5, '50%'], [1, 'Max']].map(([x, l]) => `<button type="button" data-v="${x}">${l}</button>`).join(''); }
+    const btn = $('#zGo'); btn.textContent = W ? (side === 'buy' ? 'Paper buy ZEC' : 'Paper sell ZEC') : 'Connect to paper trade'; btn.disabled = W ? !(n > 0 && px) : false;
+    const err = $('#zErr'); err.textContent = '';
+    if (W && n > 0 && (side === 'buy' ? n > W.usd + 1e-9 : n > ps.qty + 1e-12)) { err.textContent = side === 'buy' ? `You have ${money(W.usd)} of demo cash.` : `You hold ${fmtTiny(ps.qty)} ZEC.`; btn.disabled = true; }
+    const val = ps.qty * px, pnl = val - ps.cost;
+    $('#zQuote').innerHTML = (n > 0 && px ? (side === 'buy' ? `<div class="kv"><span>You get</span><span><b>${fmtTiny(n * .995 / px)} ZEC</b></span></div>` : `<div class="kv"><span>You get</span><span><b>${money(n * px * .995)}</b></span></div>`) + '<div class="kv"><span>Sim fee</span><span>0.5%</span></div>' : `<div class="kv"><span>${ZEC.source === 'live' ? 'Live price' : 'Price'}</span><span>${px ? money(px) : '—'}</span></div>`)
+      + (ps.qty > 0 ? `<div class="kv"><span>Your ZEC</span><span>${fmtTiny(ps.qty)} · ${money(val)}</span></div><div class="kv"><span>P&amp;L</span><span class="${cls(pnl)}">${money(pnl)} (${pct(ps.cost ? pnl / ps.cost : 0)})</span></div>` : '');
+  };
+  zecTradePaint = paint;
+  $('#zSide').onclick = e => { const b = e.target.closest('button'); if (!b) return; side = b.dataset.side; $$('#zSide button').forEach(x => x.classList.toggle('on', x === b)); $('#zUnit').textContent = side === 'buy' ? 'USD' : 'ZEC'; $('#zLbl').textContent = side === 'buy' ? 'You pay' : 'You sell'; amt.value = ''; paint(); };
+  $('#zQuick').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (!W) return openConnect(); if (side === 'buy') amt.value = b.dataset.v; else { const q = pos().qty; if (!q) { $('#zErr').textContent = 'You hold no ZEC yet. Switch to Buy.'; return; } amt.value = +b.dataset.v === 1 ? String(q) : String(q * +b.dataset.v); } paint(); };
+  amt.oninput = paint; amt.onkeydown = e => { if (e.key === 'Enter') $('#zGo').click(); };
+  $('#zGo').onclick = () => {
+    if (!W) return openConnect(() => { location.hash = '#/zcash'; });
+    const n = parseFloat(amt.value) || 0, px = ZEC.price; if (!(n > 0) || !px) return;
+    W.paper = W.paper || {}; const ps = W.paper.zec || { qty: 0, cost: 0, sym: 'ZEC', name: 'Zcash' };
+    if (side === 'buy') { if (n > W.usd + 1e-9) return; const q = n * .995 / px; ps.qty += q; ps.cost += n; W.usd -= n; toast(`Paper bought ${fmtTiny(q)} ZEC`); }
+    else { if (n > ps.qty + 1e-12) return; const out = n * px * .995; ps.cost *= 1 - n / ps.qty; ps.qty -= n; W.usd += out; toast(`Paper sold ${fmtTiny(n)} ZEC for ${money(out)}`); }
+    if (ps.qty < 1e-12) delete W.paper.zec; else W.paper.zec = ps;
+    save(); amt.value = ''; paint();
+  };
+  paint(); zecPagePaint();
+}
+let zecTradePaint = null;
+function zecPagePaint() {
+  const st = $('#zStats'); if (!st) return;
+  const h = zecHeightNow(), issued = zecIssued(h), next = zecNextHalving(h), left = Math.max(0, next - h), days = left * 75 / 86400;
+  $('#zSrc').textContent = ZEC.source === 'live' ? 'live' : ZEC.source;
+  st.innerHTML = [
+    ['24h range', ZEC.price ? `${money(ZEC.low)} – ${money(ZEC.high)}` : '—'],
+    ['24h volume', ZEC.vol ? compact(ZEC.vol) + ' ZEC' : '—'],
+    ['Market cap (est.)', ZEC.price && issued ? usdC(issued * ZEC.price) : '—'],
+    ['Block height', h ? `<span data-zheight>${h.toLocaleString()}</span>` : '—'],
+  ].map(([k, v2]) => `<div class="stat"><div class="eyebrow">${k}</div><div class="v" style="font-size:18px">${v2}</div></div>`).join('');
+  const sup = $('#zSupply');
+  if (sup) {
+    const ms = [[0, 'Launch', '2016', 12.5], [H1, '1st halving', '2020', 3.125], [H2, '2nd halving', '2024', 1.5625], [H2 + HALVING, '3rd halving', '≈2028', .78125]];
+    const maxH = H2 + HALVING, pos2 = h ? Math.min(1, h / maxH) : 0;
+    sup.innerHTML = h ? `<div class="kv"><span>Issued so far (est.)</span><span>${Math.round(issued).toLocaleString()} ZEC</span></div>
+      <div class="prog zsup"><i style="width:${(issued / 21e6 * 100).toFixed(2)}%"></i></div><div class="kv"><span>Hard cap</span><span>21,000,000 ZEC · ${(issued / 21e6 * 100).toFixed(1)}% issued</span></div>
+      <div class="kv"><span>Block reward now</span><span>${zecReward(h)} ZEC every 75 s</span></div>
+      <div class="ztl"><i class="ztl-now" style="left:${(pos2 * 100).toFixed(2)}%" title="Now"></i>${ms.map(([bh, l, y, r]) => `<span class="ztl-m ${h >= bh ? 'past' : ''}" style="left:${(bh / maxH * 100).toFixed(2)}%"><b>${y}</b><span>${l}<br>${r} ZEC</span></span>`).join('')}</div>
+      <div class="kv"><span>Next halving</span><span>block ${next.toLocaleString()} · ${left.toLocaleString()} blocks · ≈${Math.round(days)} days</span></div>
+      <p class="hint">Issued supply is computed from the block height and the emission schedule. Market cap uses that estimate.</p>` : '<span class="micro">Waiting for the block height…</span>';
+  }
+  if (zecTradePaint) zecTradePaint();
+}
+
 // ---------- routing ----------
 function routeParts() { return (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean).map(decodeURIComponent); }
 let chart = null, chartSeries = null, volSeries = null, chartCoin = null, chartTf = store('sc.tf') || 300;
 function render() {
   destroyChart();
-  destroyLiveChart(); liveTradePaint = null;
+  destroyLiveChart(); liveTradePaint = null; zecTradePaint = null;
   coinPaint = null; lowTab = 'trades';
   const [p, a] = routeParts();
   renderNav();
   const view = $('#view');
-  const pages = { '': home, pairs, unclaimed, beat, watch, legs, launch, account, treasury, docs, security, coin, live: liveTokenPage };
+  const pages = { '': home, pairs, unclaimed, beat, watch, legs, launch, account, treasury, docs, security, coin, live: liveTokenPage, zcash: zcashPage };
   const fn = pages[p || ''];
   view.innerHTML = '';
   if (!fn) { view.innerHTML = `<div class="empty"><h2>Nothing here</h2><p>That page does not exist.</p><a class="btn primary" href="#/">Back to the board</a></div>`; return; }
@@ -1328,6 +1579,7 @@ function home(v) {
     <div class="stat"><div class="eyebrow">Stock held by curves</div><div class="v" data-count="${held}" data-fmt="money">${money(held, { compact: 1 })}</div></div>
     <div class="stat"><div class="eyebrow">Graduated</div><div class="v" data-count="${grads}">${grads}</div></div>
   </div>
+  ${zecBanner()}
   <div class="feed" id="feed" aria-label="Latest trades"></div>
   <div class="bar"><div class="seg" role="tablist" id="boardTabs">${[['live', 'Live · Solana'], ['hot', 'Hot'], ['new', 'New'], ['near', 'Near graduation'], ['grad', 'Graduated'], ['beat', 'Beating stock']].map(([k2, l]) => `<button role="tab" data-t="${k2}" class="${ui.boardTab === k2 ? 'on' : ''}">${l}</button>`).join('')}</div>
   <input class="search" id="boardQ" placeholder="Filter by name, ticker or address" value="${esc(ui.boardQ)}" aria-label="Filter coins"></div>
@@ -1335,6 +1587,7 @@ function home(v) {
   ${howItWorks()}`;
   countUp(v);
   bindHow();
+  paintZecBanner();
   cyclePair();
   paintDuskCard();
   const recent = coins.flatMap(c => c.trades.slice(-3).map(t => ({ c, t }))).sort((a, b) => b.t.t - a.t.t).slice(0, 14);
@@ -1452,9 +1705,10 @@ function watch(v) {
   const list = ui.watch.map(id => S.coins[id]).filter(Boolean);
   const liveN = ui.watch.filter(id => id.startsWith('live:')).length;
   v.innerHTML = `<div class="page-head"><span class="eyebrow">Watchlist</span><h1>Coins you are watching</h1><p>Star any coin, live or demo, to keep it here. The list lives in this browser only.</p></div>
+  ${ui.watch.includes('zec') ? `<div class="shead"><h2>Zcash</h2>${starBtn('zec')}</div>${zecBanner()}` : ''}
   ${liveN ? `<div class="shead"><h2>Live Solana tokens</h2><span class="micro">${liveN} starred</span></div><div class="grid" id="liveWatch">${liveWatchHtml() || '<div class="card skel"></div>'}</div>` : ''}
   ${list.length ? `<div class="shead"><h2>Demo coins</h2></div><div class="grid">${list.map(card).join('')}</div>` : ''}
-  ${!list.length && !liveN ? `<div class="empty"><p>Nothing starred yet. Tap the star on any coin card.</p><a class="btn primary" href="#/">Browse the board</a></div>` : ''}`;
+  ${!list.length && !liveN && !ui.watch.includes('zec') ? `<div class="empty"><p>Nothing starred yet. Tap the star on any coin card.</p><a class="btn primary" href="#/">Browse the board</a></div>` : ''}`;
 }
 
 function legs(v) {
@@ -1553,7 +1807,7 @@ function account(v) {
   if (!W) { v.innerHTML = `<div class="page-head"><span class="eyebrow">Account</span><h1>Connect to see your coins</h1></div><div class="empty"><p>Your balances, positions and launches show up here.</p><button class="btn primary" id="accConn" type="button">Connect</button></div>`; $('#accConn').onclick = () => openConnect(); return; }
   const pos = Object.values(S.coins).filter(c => (c.holders[W.addr] || 0) > 0).map(c => { const b = c.holders[W.addr]; const val2 = sellValueUsd(c, b); return { c, b, val: val2 }; });
   const total = pos.reduce((s, p) => s + p.val, 0);
-  const paperVal = Object.entries(W.paper || {}).reduce((s2, [k, ps]) => { const lpair = LIVE.pairs.get(k.slice(5)); return s2 + (lpair ? ps.qty * lp(lpair) : 0); }, 0);
+  const paperVal = Object.entries(W.paper || {}).reduce((s2, [k, ps]) => { if (k === 'zec') return s2 + ps.qty * ZEC.price; const lpair = LIVE.pairs.get(k.slice(5)); return s2 + (lpair ? ps.qty * lp(lpair) : 0); }, 0);
   const mine = (W.launched || []).map(id => S.coins[id]).filter(Boolean);
   v.innerHTML = `<div class="page-head"><span class="eyebrow">Account · ${esc(walletLabel(W))}${W.signed ? ' · signed in' : ''}</span><h1 class="mono" style="font-size:clamp(22px,4vw,34px);word-break:break-all">${esc(W.addr)}</h1></div>
   <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:26px">
@@ -1578,9 +1832,9 @@ function account(v) {
   $('#rst2').onclick = () => { S = freshLedger(); W = null; activeProvider = null; ui.watch = []; store('sc.wallets', {}); store('sc.watch', []); save(); renderConnect(); toast('Demo reset'); location.hash = '#/'; render(); };
 }
 function paperHtml() {
-  const rows = Object.entries((W && W.paper) || {}).map(([k, ps]) => ({ k, ps, p: LIVE.pairs.get(k.slice(5)) }));
+  const rows = Object.entries((W && W.paper) || {}).map(([k, ps]) => ({ k, ps, p: k === 'zec' ? { zec: true } : LIVE.pairs.get(k.slice(5)) }));
   if (!rows.length) return '';
-  return `<div class="shead"><h2>Paper trades on live tokens</h2><span class="micro">${LIVE.source === 'live' ? 'valued at live prices' : 'valued at snapshot prices'}</span></div><div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">Amount</th><th class="r">Cost</th><th class="r">Value</th><th class="r">P&amp;L</th></tr></thead><tbody>${rows.map(({ k, ps, p }) => { const val = p ? ps.qty * lp(p) : 0, pnl = val - ps.cost; return `<tr class="link" data-go="#/live/${esc(k.slice(5))}"><td><div class="cell-co">${p ? liveImg(p, 'sm') : ''}<b>${esc(ps.sym)}</b><span class="micro">${esc(ps.name)}</span></div></td><td class="r mono">${tok(ps.qty)}</td><td class="r mono">${money(ps.cost)}</td><td class="r mono">${p ? money(val) : '—'}</td><td class="r mono ${cls(pnl)}">${p ? money(pnl) + ' · ' + pct(ps.cost ? pnl / ps.cost : 0) : '—'}</td></tr>`; }).join('')}</tbody></table></div>`;
+  return `<div class="shead"><h2>Paper trades</h2><span class="micro">${LIVE.source === 'live' ? 'valued at live prices' : 'valued at snapshot prices'}</span></div><div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">Amount</th><th class="r">Cost</th><th class="r">Value</th><th class="r">P&amp;L</th></tr></thead><tbody>${rows.map(({ k, ps, p }) => { const val = p ? ps.qty * (p.zec ? ZEC.price : lp(p)) : 0, pnl = val - ps.cost; return `<tr class="link" data-go="${k === 'zec' ? '#/zcash' : '#/live/' + esc(k.slice(5))}"><td><div class="cell-co">${p ? (p.zec ? zecLogo(28) : liveImg(p, 'sm')) : ''}<b>${esc(ps.sym)}</b><span class="micro">${esc(ps.name)}</span></div></td><td class="r mono">${k === 'zec' ? fmtTiny(ps.qty) : tok(ps.qty)}</td><td class="r mono">${money(ps.cost)}</td><td class="r mono">${p ? money(val) : '—'}</td><td class="r mono ${cls(pnl)}">${p ? money(pnl) + ' · ' + pct(ps.cost ? pnl / ps.cost : 0) : '—'}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function sellValueUsd(c, b) { const q = quoteSell(c, b); return Math.max(0, q.out) * S.stocks[c.co].px; }
 
@@ -1855,6 +2109,8 @@ function boot() {
   setInterval(loop, 2200);
   liveRefresh(true);
   setInterval(() => liveRefresh(), 15000);
+  zecRefresh(true);
+  setInterval(() => zecRefresh(), 20000);
   window.addEventListener('resize', () => { clearTimeout(boot.rt); boot.rt = setTimeout(() => { drawSparks(); if ($('#curveCv')) drawCurve($('#curveCv')); }, 120); });
   document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-expand], .flip')) { e.preventDefault(); e.target.click(); return; } });
   document.addEventListener('keydown', e => { const cd = e.target.closest && e.target.closest('.card[data-peek]'); if (cd && (e.key === 'Enter' || e.key === ' ') && e.target === cd) { e.preventDefault(); openPeek(cd.dataset.peek, cd); } });

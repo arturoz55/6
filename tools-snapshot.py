@@ -40,7 +40,23 @@ for a, p in best.items():
             images[a] = f"data:{ctype.split(';')[0]};base64," + base64.b64encode(data).decode()
     except Exception:
         pass
-out = {"at": int(time.time() * 1000), "boosted": boosted, "fresh": fresh, "pairs": list(best.values()), "images": images}
+# Zcash: Coinbase price, 24h stats and candles, Blockchair block height
+zec = None
+try:
+    t = get("https://api.exchange.coinbase.com/products/ZEC-USD/ticker")
+    st = get("https://api.exchange.coinbase.com/products/ZEC-USD/stats")
+    height = get("https://api.blockchair.com/zcash/stats")["data"]["best_block_height"]
+    nowms = int(time.time() * 1000)
+    candles = {}
+    for tf, (g, span) in {"1d": (300, 864e5), "7d": (3600, 7 * 864e5), "30d": (21600, 30 * 864e5), "1y": (86400, 300 * 864e5)}.items():
+        start = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime((nowms - span) / 1000))
+        rows = get(f"https://api.exchange.coinbase.com/products/ZEC-USD/candles?granularity={g}&start={start}")
+        candles[tf] = sorted([[r[0], r[3], r[2], r[1], r[4], r[5]] for r in rows])
+        time.sleep(0.4)
+    zec = {"at": nowms, "price": float(t["price"]), "open": float(st["open"]), "high": float(st["high"]), "low": float(st["low"]), "vol": float(st["volume"]), "height": height, "candles": candles}
+except Exception as e:
+    print("zec snapshot failed:", e)
+out = {"at": int(time.time() * 1000), "boosted": boosted, "fresh": fresh, "pairs": list(best.values()), "images": images, "zec": zec}
 with open("live-snapshot.json", "w") as f:
     json.dump(out, f, separators=(",", ":"))
 print(f"{len(best)} tokens, {len(images)} icons")

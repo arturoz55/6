@@ -13,3 +13,8 @@ The only change is resizing and JPEG re-compression. These image files stay unde
 [@web3icons/core](https://github.com/0xa3k5/web3icons) 4.0.57, MIT licensed, Copyright (c) web3icons contributors.
 The logos are trademarks of MetaMask (Consensys), Phantom, Coinbase, Rabby (DeBank), Solflare and Backpack.
 They are shown only to identify each wallet in the connect dialog. Sharecurve is not affiliated with or endorsed by these companies.
+
+## Zcash logo
+
+`img/zec.svg` (also inlined in `app.js` as `ZEC_LOGO`) comes from [@web3icons/core](https://github.com/0xa3k5/web3icons) 4.0.57, MIT licensed.
+The Zcash name and logo are trademarks of the Zcash Foundation. They are used only to identify the coin. Sharecurve is not affiliated with Zcash.
