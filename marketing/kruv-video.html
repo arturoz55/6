@@ -1,0 +1,188 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="fonts-local.css">
+<style>html,body{margin:0;background:#05070f}canvas{display:block}</style>
+</head><body>
+<canvas id="c" width="1080" height="1080"></canvas>
+<script>
+// Kruv launch video. render(t) draws the frame at t seconds; the capture script steps t at 30 fps.
+const W = 1080, H = 1080, cv = document.getElementById('c'), x = cv.getContext('2d');
+const mark = new Image(); mark.src = 'mark.png';
+const C = { bg0: '#05070f', bg1: '#0d1433', ink: '#eef1fb', ink2: '#aab3cf', ink3: '#6c7699', acc: '#ffb27a', acc2: '#f4925a', teal: '#8fb6ff', up: '#5ee0a6', down: '#ff7a8a' };
+const DISP = "'Bricolage Grotesque', sans-serif", MONO = "'IBM Plex Mono', monospace";
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = t => 1 - Math.pow(1 - clamp(t), 3);
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+// scene windows [in, out]; fade in over .5 s and out over .4 s
+const vis = (t, a, b) => Math.min(ease(seg(t, a, a + .5)), 1 - ease(seg(t, b - .4, b)));
+let rnd = 7; const R = () => (rnd = (rnd * 16807) % 2147483647) / 2147483647;
+const stars = Array.from({ length: 160 }, () => ({ x: R() * W, y: R() * H, r: R() * 1.6 + .3, p: R() * 6, s: R() * .6 + .2 }));
+const skyline = (() => { const b = []; let px = -20; while (px < W + 20) { const w = 30 + R() * 70, h = 60 + Math.pow(R(), 1.6) * 260; b.push({ x: px, w, h, win: Array.from({ length: 30 }, () => R() < .35) }); px += w + R() * 6; } return b; })();
+
+function bg(t) {
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.bg0); g.addColorStop(.6, C.bg1); g.addColorStop(1, '#1a1a3a');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  const glow = x.createRadialGradient(W * .78, H * .18, 0, W * .78, H * .18, 620); glow.addColorStop(0, 'rgba(255,170,120,.16)'); glow.addColorStop(1, 'rgba(255,170,120,0)');
+  x.fillStyle = glow; x.fillRect(0, 0, W, H);
+  for (const s of stars) { x.globalAlpha = (.35 + .45 * Math.sin(t * 1.6 + s.p)); x.fillStyle = '#fff'; x.fillRect((s.x - t * 8 * s.s + W) % W, s.y, s.r, s.r); }
+  x.globalAlpha = 1;
+  // night city along the bottom, lights flicker slowly
+  const base = H, par = t * 6;
+  for (const b of skyline) {
+    const bx = ((b.x - par) % (W + 120) + W + 120) % (W + 120) - 60;
+    x.fillStyle = '#0a0e24'; x.fillRect(bx, base - b.h, b.w, b.h);
+    let k = 0; for (let wy = base - b.h + 12; wy < base - 10; wy += 16) for (let wx = bx + 6; wx < bx + b.w - 8; wx += 12) { k++; if (b.win[k % 30] && Math.sin(t * .7 + k) > -.6) { x.fillStyle = k % 7 ? 'rgba(255,206,140,.55)' : 'rgba(150,190,255,.5)'; x.fillRect(wx, wy, 5, 7); } }
+  }
+  const fog = x.createLinearGradient(0, H - 340, 0, H); fog.addColorStop(0, 'rgba(5,7,15,0)'); fog.addColorStop(1, 'rgba(5,7,15,.75)');
+  x.fillStyle = fog; x.fillRect(0, H - 340, W, 340);
+}
+function text(s, px, py, size, opts = {}) {
+  x.save(); x.globalAlpha *= opts.a == null ? 1 : opts.a;
+  x.font = `${opts.w || 700} ${size}px ${opts.f || DISP}`; x.fillStyle = opts.c || C.ink; x.textAlign = opts.al || 'center'; x.textBaseline = 'alphabetic';
+  if (opts.ls) x.letterSpacing = opts.ls + 'px';
+  x.fillText(s, px, py); x.restore();
+}
+function drawMark(cx, cy, size, rot = 0, a = 1) {
+  if (!mark.complete) return;
+  x.save(); x.globalAlpha *= a; x.translate(cx, cy); x.rotate(rot); x.drawImage(mark, -size / 2, -size / 2, size, size); x.restore();
+}
+function pill(cx, cy, label, opts = {}) {
+  x.save(); x.font = `600 ${opts.size || 40}px ${MONO}`; const w = x.measureText(label).width + 56, h = (opts.size || 40) + 34;
+  x.globalAlpha *= opts.a == null ? 1 : opts.a;
+  x.fillStyle = opts.bg || 'rgba(255,255,255,.08)'; x.strokeStyle = opts.st || 'rgba(255,255,255,.22)'; x.lineWidth = 2;
+  x.beginPath(); x.roundRect(cx - w / 2, cy - h / 2, w, h, h / 2); x.fill(); x.stroke();
+  x.fillStyle = opts.c || C.ink; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(label, cx, cy + 2); x.restore();
+  return w;
+}
+
+// ---------- scenes ----------
+function sceneIntro(t) { // 0 - 3.6
+  const a = vis(t, 0, 3.6); if (a <= 0) return;
+  const k = ease(seg(t, .1, 1.5));
+  // the mark flies in along an arc, then settles
+  const ang = (1 - k) * 1.4, r = (1 - k) * 520;
+  const cx = W / 2 - 200 - Math.cos(ang + .6) * r, cy = 450 + Math.sin(ang + .6) * r;
+  x.save(); x.globalAlpha = a;
+  // trail
+  for (let i = 1; i < 14; i++) { const kk = ease(seg(t - i * .03, .1, 1.5)), aa = (1 - kk) * 1.4, rr = (1 - kk) * 520; x.globalAlpha = a * (1 - i / 14) * .25 * (1 - k); x.fillStyle = C.acc; x.beginPath(); x.arc(W / 2 - 170 - Math.cos(aa + .6) * rr + 60, 470 + Math.sin(aa + .6) * rr - 50, 9 - i * .5, 0, 7); x.fill(); }
+  x.globalAlpha = a;
+  drawMark(cx, cy, 300 * (.5 + .5 * k), -.3 * (1 - k));
+  // wordmark letters rise one by one
+  // real letter advances so the word keeps its natural spacing
+  x.font = `300 230px ${DISP}`; let lx = W / 2 - 40;
+  'kruv'.split('').forEach((ch, i) => { const kk = ease(seg(t, .7 + i * .12, 1.4 + i * .12)); text(ch, lx, 520 + (1 - kk) * 60, 230, { w: 300, a: kk, al: 'left' }); x.font = `300 230px ${DISP}`; lx += x.measureText(ch).width; });
+  const tg = ease(seg(t, 1.8, 2.5));
+  text('$KRUV', W / 2, 700 + (1 - tg) * 20, 64, { f: MONO, w: 600, c: C.acc, a: tg, ls: 6 });
+  x.restore();
+}
+function scenePairs(t) { // 3.6 - 8.8
+  const a = vis(t, 3.6, 8.8); if (a <= 0) return;
+  x.save(); x.globalAlpha = a;
+  const h1 = ease(seg(t, 3.7, 4.3));
+  text('Coins quoted in', W / 2, 300 + (1 - h1) * 30, 84, { a: h1 });
+  text('the stock behind the app.', W / 2, 400 + (1 - h1) * 30, 84, { a: h1, c: C.acc });
+  const pairs = [['Instagram', 'META'], ['YouTube', 'GOOGL'], ['Netflix', 'NFLX'], ['Spotify', 'SPOT']];
+  const step = 1.1, t0 = 4.5;
+  pairs.forEach(([app, tk], i) => {
+    const ki = ease(seg(t, t0 + i * step, t0 + i * step + .45)), ko = ease(seg(t, t0 + (i + 1) * step, t0 + (i + 1) * step + .35));
+    const last = i === pairs.length - 1; const k = last ? ki : ki * (1 - ko);
+    if (k <= 0) return;
+    const dy = (1 - ki) * 60 - (last ? 0 : ko * 60);
+    x.globalAlpha = a * k;
+    pill(W / 2 - 190, 620 + dy, app, { size: 46 });
+    text('→', W / 2 + 20, 637 + dy, 64, { c: C.ink3, w: 300 });
+    pill(W / 2 + 190, 620 + dy, tk, { size: 46, c: C.acc, bg: 'rgba(255,178,122,.12)', st: 'rgba(255,178,122,.5)' });
+  });
+  x.globalAlpha = a * ease(seg(t, 5, 5.6));
+  text('the app decides the pair. nobody picks their own.', W / 2, 780, 30, { f: MONO, w: 500, c: C.ink2 });
+  x.restore();
+}
+function sceneCurve(t) { // 8.8 - 13.8
+  const a = vis(t, 8.8, 13.8); if (a <= 0) return;
+  x.save(); x.globalAlpha = a;
+  const h = ease(seg(t, 8.9, 9.5));
+  text('Every buy puts real', W / 2, 220 + (1 - h) * 30, 76, { a: h });
+  text('shares into the curve.', W / 2, 310 + (1 - h) * 30, 76, { a: h, c: C.acc });
+  const ox = 170, oy = 820, gw = 740, gh = 400;
+  x.strokeStyle = 'rgba(255,255,255,.18)'; x.lineWidth = 3; x.beginPath(); x.moveTo(ox, oy - gh - 20); x.lineTo(ox, oy); x.lineTo(ox + gw + 20, oy); x.stroke();
+  text('price', ox - 14, oy - gh - 34, 26, { f: MONO, w: 500, c: C.ink3, al: 'left' });
+  text('coins sold →', ox + gw, oy + 50, 26, { f: MONO, w: 500, c: C.ink3, al: 'right' });
+  const p = easeIO(seg(t, 9.6, 12.8));
+  const curve = s => { const T = 1.073 - .8 * s; return Math.pow(1.073 / T, 2); }; // same constant-product shape the site uses
+  const top = curve(1);
+  const P = s => [ox + s * gw, oy - (curve(s) - 1) / (top - 1) * gh];
+  x.beginPath(); for (let i = 0; i <= 120 * p; i++) { const [px, py] = P(i / 120); i ? x.lineTo(px, py) : x.moveTo(px, py); }
+  x.strokeStyle = C.acc; x.lineWidth = 8; x.lineCap = 'round'; x.lineJoin = 'round'; x.stroke();
+  // fill under
+  if (p > 0) { x.lineTo(...[ox + p * gw, oy]); x.lineTo(ox, oy); x.closePath(); const g = x.createLinearGradient(0, oy - gh, 0, oy); g.addColorStop(0, 'rgba(255,178,122,.28)'); g.addColorStop(1, 'rgba(255,178,122,0)'); x.fillStyle = g; x.fill(); }
+  const [dx, dy] = P(p);
+  x.fillStyle = C.teal; x.beginPath(); x.arc(dx, dy, 16, 0, 7); x.fill();
+  x.strokeStyle = 'rgba(143,182,255,.35)'; x.lineWidth = 10; x.beginPath(); x.arc(dx, dy, 26 + Math.sin(t * 8) * 4, 0, 7); x.stroke();
+  const shares = Math.pow(p, 1.4) * 38.7;
+  text(`${shares.toFixed(1)} META shares in the curve`, W / 2, 940, 34, { f: MONO, w: 600, c: C.teal, a: ease(seg(t, 9.8, 10.2)) });
+  x.restore();
+}
+function sceneBeat(t) { // 13.8 - 17.8
+  const a = vis(t, 13.8, 17.8); if (a <= 0) return;
+  x.save(); x.globalAlpha = a;
+  const h = ease(seg(t, 13.9, 14.5));
+  text('Beat the stock,', W / 2, 270 + (1 - h) * 30, 92, { a: h });
+  text('not just the dollar.', W / 2, 375 + (1 - h) * 30, 92, { a: h, c: C.acc });
+  const bars = [['the stock', .18, C.ink3, '+4%'], ['the coin vs its stock', .86, C.up, '+120%']];
+  bars.forEach(([l, v, col, lab], i) => {
+    const k = easeIO(seg(t, 14.6 + i * .35, 15.9 + i * .35));
+    const y = 560 + i * 170;
+    text(l, 150, y - 24, 34, { f: MONO, w: 500, c: C.ink2, al: 'left' });
+    x.fillStyle = 'rgba(255,255,255,.08)'; x.beginPath(); x.roundRect(150, y, 780, 64, 32); x.fill();
+    x.fillStyle = col; x.beginPath(); x.roundRect(150, y, Math.max(64, 780 * v * k), 64, 32); x.fill();
+    text(lab, 150 + Math.max(64, 780 * v * k) + 20, y + 47, 40, { f: MONO, w: 600, c: col, al: 'left', a: k });
+  });
+  text('example numbers', W / 2, 930, 26, { f: MONO, w: 500, c: C.ink3, a: ease(seg(t, 15.5, 16)) });
+  x.restore();
+}
+function sceneLock(t) { // 17.8 - 21.2
+  const a = vis(t, 17.8, 21.2); if (a <= 0) return;
+  x.save(); x.globalAlpha = a;
+  const h = ease(seg(t, 17.9, 18.5));
+  text('Sell out the curve.', W / 2, 260 + (1 - h) * 30, 86, { a: h });
+  text('Liquidity locks forever.', W / 2, 360 + (1 - h) * 30, 86, { a: h, c: C.acc });
+  // pool
+  const py = 720;
+  x.fillStyle = 'rgba(143,182,255,.25)'; x.beginPath(); x.ellipse(W / 2, py + 26, 260, 54, 0, 0, 7); x.fill();
+  x.fillStyle = 'rgba(143,182,255,.45)'; x.beginPath(); x.ellipse(W / 2, py, 260, 54, 0, 0, 7); x.fill();
+  // lock drops with a bounce
+  const k = seg(t, 18.6, 19.5), bounce = k < 1 ? 1 - Math.abs(Math.cos(k * Math.PI * 1.5)) * (1 - k) : 1;
+  const ly = 380 + bounce * 240;
+  x.globalAlpha = a * ease(seg(t, 18.6, 18.8));
+  x.strokeStyle = C.acc; x.lineWidth = 26; x.beginPath(); x.arc(W / 2, ly - 10, 62, Math.PI, 0); x.stroke();
+  x.fillStyle = C.acc; x.beginPath(); x.roundRect(W / 2 - 100, ly - 10, 200, 150, 26); x.fill();
+  x.fillStyle = '#1d0f06'; x.beginPath(); x.arc(W / 2, ly + 55, 20, 0, 7); x.fill(); x.fillRect(W / 2 - 8, ly + 60, 16, 42);
+  // ripple when it lands
+  const rk = seg(t, 19.4, 20.4); if (rk > 0 && rk < 1) { x.globalAlpha = a * (1 - rk); x.strokeStyle = C.teal; x.lineWidth = 4; x.beginPath(); x.ellipse(W / 2, py, 260 + rk * 140, 54 + rk * 30, 0, 0, 7); x.stroke(); }
+  x.restore();
+}
+function sceneOutro(t) { // 21.2 - 24
+  const a = ease(seg(t, 21.2, 21.8)); if (a <= 0) return;
+  x.save(); x.globalAlpha = a;
+  const k = ease(seg(t, 21.3, 22.3));
+  const pulse = 1 + Math.sin(t * 3) * .015;
+  // glow ring
+  const g = x.createRadialGradient(W / 2, 400, 0, W / 2, 400, 360); g.addColorStop(0, 'rgba(255,178,122,.25)'); g.addColorStop(1, 'rgba(255,178,122,0)');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  drawMark(W / 2, 400, 360 * k * pulse, (1 - k) * -.5);
+  const k2 = ease(seg(t, 21.9, 22.6));
+  text('$KRUV is live', W / 2, 720 + (1 - k2) * 30, 110, { a: k2 });
+  const k3 = ease(seg(t, 22.5, 23.1));
+  pill(W / 2, 830, 'CA in bio', { size: 40, a: k3, c: C.acc, bg: 'rgba(255,178,122,.12)', st: 'rgba(255,178,122,.55)' });
+  x.restore();
+}
+function render(t) {
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1;
+  bg(t);
+  sceneIntro(t); scenePairs(t); sceneCurve(t); sceneBeat(t); sceneLock(t); sceneOutro(t);
+}
+window.render = render;
+window.ready = Promise.all([document.fonts.ready, new Promise(r => mark.complete ? r() : mark.onload = r), document.fonts.load("300 100px 'Bricolage Grotesque'"), document.fonts.load("700 100px 'Bricolage Grotesque'"), document.fonts.load("600 40px 'IBM Plex Mono'"), document.fonts.load("500 40px 'IBM Plex Mono'")]);
+</script>
+</body></html>
