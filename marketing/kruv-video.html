@@ -171,10 +171,10 @@ function sceneOutro(t) { // 21.2 - 24
   const g = x.createRadialGradient(W / 2, 400, 0, W / 2, 400, 360); g.addColorStop(0, 'rgba(255,178,122,.25)'); g.addColorStop(1, 'rgba(255,178,122,0)');
   x.fillStyle = g; x.fillRect(0, 0, W, H);
   drawMark(W / 2, 400, 360 * k * pulse, (1 - k) * -.5);
-  const k2 = ease(seg(t, 21.9, 22.6));
-  text('$KRUV is live', W / 2, 720 + (1 - k2) * 30, 110, { a: k2 });
-  const k3 = ease(seg(t, 22.5, 23.1));
-  pill(W / 2, 830, 'CA in bio', { size: 40, a: k3, c: C.acc, bg: 'rgba(255,178,122,.12)', st: 'rgba(255,178,122,.55)' });
+  // closing: the mark and the wordmark, nothing else
+  const k2 = ease(seg(t, 21.9, 22.7));
+  x.font = `300 150px ${DISP}`; const ww = x.measureText('kruv').width;
+  text('kruv', W / 2 - ww / 2, 740 + (1 - k2) * 30, 150, { w: 300, a: k2, al: 'left' });
   x.restore();
 }
 function render(t) {
