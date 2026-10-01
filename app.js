@@ -347,7 +347,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.`;
 function openLicense() {
-  openModal('MIT license', `<pre id="licTxt">${esc(LICENSE)}</pre><p class="hint" style="margin-top:12px">The MIT license covers the code. The hero photo, <a href="https://commons.wikimedia.org/wiki/File:Singapore_Marina_Bay_Dusk_2018-02-27.jpg" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">Singapore Marina Bay Dusk</a> by Benh LIEU SONG, is used under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">CC BY-SA 4.0</a>, resized.</p><div class="bar" style="margin:14px 0 0"><button class="btn ghost" id="copyLic" type="button">Copy license</button></div>`);
+  openModal('MIT license', `<pre id="licTxt">${esc(LICENSE)}</pre><p class="hint" style="margin-top:12px">The MIT license covers the code. The background photo, <a href="https://commons.wikimedia.org/wiki/File:Singapore_Marina_Bay_Dusk_2018-02-27.jpg" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">Singapore Marina Bay Dusk</a> by Benh LIEU SONG, is used under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">CC BY-SA 4.0</a>, resized.</p><div class="bar" style="margin:14px 0 0"><button class="btn ghost" id="copyLic" type="button">Copy license</button></div>`);
   $('#copyLic').onclick = () => {
     const done = () => toast('License copied');
     try { navigator.clipboard.writeText(LICENSE).then(done, selectLic); } catch (e) { selectLic(); }
@@ -475,7 +475,6 @@ function home(v) {
   const held = coins.reduce((s, c) => s + Math.max(0, c.vq - c.vq0) * S.stocks[c.co].px, 0);
   const word = 'sharecurve';
   v.innerHTML = `<section class="dusk" aria-label="Sharecurve">
-    <img class="dusk-photo" src="img/marina-dusk-2400.jpg" srcset="img/marina-dusk-1200.jpg 1200w, img/marina-dusk-2400.jpg 2400w" sizes="(max-width: 700px) 1200px, 100vw" alt="Marina Bay in Singapore at dusk: lit glass towers over still water" fetchpriority="high" decoding="async">
     <div class="dusk-top">
       <span class="eyebrow"><span class="live-dot"></span>Demo network · live</span>
       <p class="lede">Launch a coin priced in shares of the company behind the app. Instagram trades against <em>META</em>, YouTube against <em>GOOGL</em>, Netflix against <em>NFLX</em>. Every buy puts the stock itself into the curve.</p>
@@ -484,7 +483,6 @@ function home(v) {
     </div>
     <div class="dusk-word" aria-hidden="true">${word.split('').map((ch, i) => `<span style="animation-delay:${0.15 + i * 0.045}s">${ch}</span>`).join('')}</div>
     <a class="dusk-card" id="duskCard" href="#/"></a>
-    <a class="photo-credit" href="https://commons.wikimedia.org/wiki/File:Singapore_Marina_Bay_Dusk_2018-02-27.jpg" target="_blank" rel="noopener noreferrer">Photo: Benh LIEU SONG · CC BY-SA 4.0</a>
   </section>
   <div class="stats">
     <div class="stat"><div class="eyebrow">24h volume</div><div class="v" data-count="${vol}" data-fmt="money">${money(vol, { compact: 1 })}</div></div>
@@ -498,7 +496,6 @@ function home(v) {
   <div class="grid" id="board"></div>`;
   countUp(v);
   cyclePair();
-  bindPhoto($('.dusk'));
   paintDuskCard();
   const recent = coins.flatMap(c => c.trades.slice(-3).map(t => ({ c, t }))).sort((a, b) => b.t.t - a.t.t).slice(0, 14);
   $('#feed').innerHTML = recent.map(x => feedItem(x.c, x.t)).join('');
@@ -535,16 +532,18 @@ function cyclePair() {
   pdTimer = setInterval(() => { const el = $('#pd'); if (!el) return clearInterval(pdTimer); i = (i + 1) % pairs.length; el.innerHTML = `<b>${pairs[i][0]}</b>→<i>${pairs[i][1]}</i>`; el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap'); }, 2200);
 }
 
-// ---------- hero photo: slow drift plus a little parallax under the pointer ----------
+// ---------- page background photo: slow drift, plus parallax from the pointer and the scroll ----------
 function bindPhoto(sec) {
-  const img = sec && sec.querySelector('.dusk-photo'); if (!img) return;
+  const img = sec && sec.querySelector('img'); if (!img) return;
   const done = () => sec.classList.add('loaded');
   if (img.complete && img.naturalWidth) done(); else { img.addEventListener('load', done); img.addEventListener('error', () => sec.classList.add('noimg')); }
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   let tx = 0, ty = 0, x = 0, y = 0, raf = 0;
   const step = () => { x += (tx - x) * .08; y += (ty - y) * .08; img.style.translate = `${x.toFixed(2)}px ${y.toFixed(2)}px`; if (Math.abs(tx - x) + Math.abs(ty - y) > .05) raf = requestAnimationFrame(step); else raf = 0; };
-  sec.addEventListener('pointermove', e => { const r = sec.getBoundingClientRect(); tx = -((e.clientX - r.left) / r.width - .5) * 22; ty = -((e.clientY - r.top) / r.height - .5) * 14; if (!raf) raf = requestAnimationFrame(step); });
-  sec.addEventListener('pointerleave', () => { tx = 0; ty = 0; if (!raf) raf = requestAnimationFrame(step); });
+  let px = 0, py = 0, sy = 0;
+  const aim = () => { tx = px; ty = py - Math.min(28, sy * .03); if (!raf) raf = requestAnimationFrame(step); };
+  window.addEventListener('pointermove', e => { px = -(e.clientX / innerWidth - .5) * 24; py = -(e.clientY / innerHeight - .5) * 16; aim(); }, { passive: true });
+  window.addEventListener('scroll', () => { sy = scrollY; aim(); }, { passive: true });
 }
 function countUp(root) {
   $$('[data-count]', root).forEach(el => {
@@ -977,6 +976,7 @@ function loop() {
 function boot() {
   load();
   initHeader();
+  bindPhoto($('#pageBg'));
   renderTape();
   render();
   save();
