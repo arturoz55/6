@@ -53,7 +53,7 @@ const CCY = { USD: { r: 1, s: '$' }, EUR: { r: 0.92, s: '€' }, GBP: { r: 0.79,
 const KEY = 'sc.state.v2';
 let S = null;          // ledger: coins, stock feed, treasury
 let W = null;          // wallet: address, usd, bal {coinId: tokens}, kind
-let ui = { ccy: store('sc.ccy') || 'USD', watch: store('sc.watch') || [], boardTab: 'hot', boardQ: '' };
+let ui = { slip: store('sc.slip') || 0.01, ccy: store('sc.ccy') || 'USD', watch: store('sc.watch') || [], boardTab: store('sc.tab') || 'hot', boardQ: '' };
 if (!CCY[ui.ccy]) ui.ccy = 'USD';
 
 function freshLedger() {
@@ -256,7 +256,8 @@ let toastT;
 function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2600); }
 
 // ---------- header ----------
-const NAV = [['', 'Board'], ['pairs', 'Pairs'], ['unclaimed', 'Unclaimed'], ['beat', 'Scoreboard'], ['watch', 'Watchlist'], ['legs', 'Two legs'], ['launch', 'Launch'], ['account', 'Account'], ['treasury', 'Treasury'], ['docs', 'Docs'], ['security', 'Security']];
+const NAV = [['', 'Board'], ['pairs', 'Pairs'], ['unclaimed', 'Unclaimed'], ['beat', 'Scoreboard'], ['watch', 'Watchlist'], ['legs', 'Two legs'], ['launch', 'Launch'], ['account', 'Account'], ['docs', 'Docs']];
+const TITLES = { treasury: 'Treasury', security: 'Security', coin: 'Coin' };
 function renderNav() {
   const cur = routeParts()[0] || '';
   const html = NAV.map(([r, l]) => `<a href="#/${r}" class="${cur === r ? 'on' : ''}">${l}</a>`).join('');
@@ -452,6 +453,8 @@ function routeParts() { return (location.hash.replace(/^#\/?/, '') || '').split(
 let chart = null, chartSeries = null, volSeries = null, chartCoin = null, chartTf = store('sc.tf') || 300;
 function render() {
   destroyChart();
+  coinPaint = null; lowTab = 'trades';
+  if (dusk) { dusk.destroy(); dusk = null; }
   const [p, a] = routeParts();
   renderNav();
   const view = $('#view');
@@ -461,7 +464,7 @@ function render() {
   if (!fn) { view.innerHTML = `<div class="empty"><h2>Nothing here</h2><p>That page does not exist.</p><a class="btn primary" href="#/">Back to the board</a></div>`; return; }
   fn(view, a);
   drawSparks();
-  document.title = 'Sharecurve' + (p ? ' · ' + (p === 'coin' && S.coins[a] ? S.coins[a].sym : (NAV.find(n => n[0] === p) || [0, p])[1]) : '');
+  document.title = 'Sharecurve' + (p ? ' · ' + (p === 'coin' && S.coins[a] ? S.coins[a].sym : (NAV.find(n => n[0] === p) || [0, TITLES[p] || p])[1]) : '');
 }
 window.addEventListener('hashchange', () => { closeModal(); window.scrollTo(0, 0); render(); });
 
@@ -471,25 +474,34 @@ function home(v) {
   const vol = coins.reduce((s, c) => s + vol24(c), 0);
   const grads = coins.filter(c => c.graduated).length;
   const held = coins.reduce((s, c) => s + Math.max(0, c.vq - c.vq0) * S.stocks[c.co].px, 0);
-  v.innerHTML = `<section class="hero">
-    <div><span class="eyebrow"><span class="live-dot"></span>Demo network · live</span>
-      <h1 style="margin-top:14px">Coins quoted in the stock <em>behind the app.</em></h1>
-      <p class="lede">An Instagram coin trades against META. A YouTube coin trades against GOOGL. Every buy puts real shares of the company into the curve, so a coin can only beat its stock, never just the dollar.</p>
-      <div class="pairdemo" aria-hidden="true"><span class="pd" id="pd"><b>Instagram</b>→<i>META</i></span><span>the curve holds the stock</span></div>
-      <div class="cta"><a class="btn primary big" href="#/launch">Launch a coin</a><a class="btn ghost big" href="#/docs/pairing">How pairing works</a></div>
+  const word = 'sharecurve';
+  v.innerHTML = `<section class="dusk" aria-label="Sharecurve">
+    <canvas id="skyline" aria-hidden="true"></canvas>
+    <div class="dusk-top">
+      <span class="eyebrow"><span class="live-dot"></span>Demo network · live</span>
+      <p class="lede">Launch a coin priced in shares of the company behind the app. Instagram trades against <em>META</em>, YouTube against <em>GOOGL</em>, Netflix against <em>NFLX</em>. Every buy puts the stock itself into the curve.</p>
+      <div class="dusk-pair" aria-hidden="true"><span class="pd" id="pd"><b>Instagram</b>→<i>META</i></span><span>the curve holds the stock</span></div>
+      <div class="cta"><a class="btn white big" href="#/launch">Launch a coin</a><a class="btn glass big" href="#/docs/pairing">How pairing works</a></div>
     </div>
-    <div class="stats">
-      <div class="stat"><div class="eyebrow">24h volume</div><div class="v" data-count="${vol}" data-fmt="money">${money(vol, { compact: 1 })}</div></div>
-      <div class="stat"><div class="eyebrow">Coins live</div><div class="v" data-count="${coins.length}">${coins.length}</div></div>
-      <div class="stat"><div class="eyebrow">Stock held by curves</div><div class="v" data-count="${held}" data-fmt="money">${money(held, { compact: 1 })}</div></div>
-      <div class="stat"><div class="eyebrow">Graduated</div><div class="v" data-count="${grads}">${grads}</div></div>
-    </div>
+    <div class="dusk-word" aria-hidden="true">${word.split('').map((ch, i) => `<span style="animation-delay:${0.15 + i * 0.045}s">${ch}</span>`).join('')}</div>
+    <a class="dusk-card" id="duskCard" href="#/"></a>
   </section>
+  <div class="stats">
+    <div class="stat"><div class="eyebrow">24h volume</div><div class="v" data-count="${vol}" data-fmt="money">${money(vol, { compact: 1 })}</div></div>
+    <div class="stat"><div class="eyebrow">Coins live</div><div class="v" data-count="${coins.length}">${coins.length}</div></div>
+    <div class="stat"><div class="eyebrow">Stock held by curves</div><div class="v" data-count="${held}" data-fmt="money">${money(held, { compact: 1 })}</div></div>
+    <div class="stat"><div class="eyebrow">Graduated</div><div class="v" data-count="${grads}">${grads}</div></div>
+  </div>
+  <div class="feed" id="feed" aria-label="Latest trades"></div>
   <div class="bar"><div class="seg" role="tablist" id="boardTabs">${[['hot', 'Hot'], ['new', 'New'], ['near', 'Near graduation'], ['grad', 'Graduated'], ['beat', 'Beating stock']].map(([k2, l]) => `<button role="tab" data-t="${k2}" class="${ui.boardTab === k2 ? 'on' : ''}">${l}</button>`).join('')}</div>
   <input class="search" id="boardQ" placeholder="Filter by name, app or ticker" value="${esc(ui.boardQ)}" aria-label="Filter coins"></div>
   <div class="grid" id="board"></div>`;
   countUp(v);
   cyclePair();
+  dusk = makeDusk($('#skyline'));
+  paintDuskCard();
+  const recent = coins.flatMap(c => c.trades.slice(-3).map(t => ({ c, t }))).sort((a, b) => b.t.t - a.t.t).slice(0, 14);
+  $('#feed').innerHTML = recent.map(x => feedItem(x.c, x.t)).join('');
   const paint = () => {
     const q = ui.boardQ.toLowerCase();
     let list = coins.filter(c => !q || (c.name + ' ' + c.sym + ' ' + c.app + ' ' + c.co).toLowerCase().includes(q));
@@ -499,18 +511,174 @@ function home(v) {
     if (t === 'near') list = list.filter(c => !c.graduated).sort((a, b) => progress(b) - progress(a));
     if (t === 'grad') list = list.filter(c => c.graduated);
     if (t === 'beat') list.sort((a, b) => excess(b) - excess(a));
-    $('#board').innerHTML = list.length ? list.map(card).join('') : `<div class="empty" style="grid-column:1/-1">No coins match. <a class="btn primary" href="#/launch">Launch one</a></div>`;
+    $('#board').innerHTML = list.length ? list.map(card).join('') : `<div class="empty" style="grid-column:1/-1">${t === 'grad' ? 'No coin has filled its curve yet. The closest ones are under Near graduation.' : 'No coins match.'} <a class="btn primary" href="#/launch">Launch one</a></div>`;
     drawSparks();
   };
-  $('#boardTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; ui.boardTab = b.dataset.t; $$('#boardTabs button').forEach(x => x.classList.toggle('on', x === b)); paint(); };
+  $('#boardTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; ui.boardTab = b.dataset.t; store('sc.tab', ui.boardTab); $$('#boardTabs button').forEach(x => x.classList.toggle('on', x === b)); paint(); };
   $('#boardQ').oninput = e => { ui.boardQ = e.target.value; paint(); };
   paint();
+}
+function feedItem(c, t) {
+  return `<a href="#/coin/${c.id}">${logo(c, 'sm')}<span class="${t.side === 'buy' ? 'up' : 'down'}">${t.side === 'buy' ? 'bought' : 'sold'}</span><b class="mono">${money(t.usd)}</b><span class="muted">of ${esc(c.sym)}</span></a>`;
+}
+function paintDuskCard() {
+  const el = $('#duskCard'); if (!el) return;
+  const c = Object.values(S.coins).sort((a, b) => change24(b) - change24(a))[0]; if (!c) return;
+  const ch = change24(c);
+  el.href = '#/coin/' + c.id;
+  el.innerHTML = `<span class="lbl">Top mover · 24h</span>${logo(c, 'sm')}<span><b>${esc(c.name)}</b><span class="mono">${money(priceUsd(c), { co: c.co })} <span class="${cls(ch)}">${pct(ch)}</span></span></span><span class="go" aria-hidden="true">→</span>`;
 }
 let pdTimer;
 function cyclePair() {
   clearInterval(pdTimer); let i = 0;
   const pairs = [['Instagram', 'META'], ['YouTube', 'GOOGL'], ['Netflix', 'NFLX'], ['Spotify', 'SPOT'], ['Duolingo', 'DUOL'], ['Twitch', 'AMZN']];
   pdTimer = setInterval(() => { const el = $('#pd'); if (!el) return clearInterval(pdTimer); i = (i + 1) % pairs.length; el.innerHTML = `<b>${pairs[i][0]}</b>→<i>${pairs[i][1]}</i>`; el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap'); }, 2200);
+}
+
+// ---------- the skyline: a procedurally drawn city at dusk ----------
+let dusk = null;
+function makeDusk(cv) {
+  if (!cv) return null;
+  const ctx = cv.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W = 0, H = 0, G = 0, dpr = 1, layers = [], stars = [], clouds = [], beacons = [], tower = null;
+  let raf = 0, last = 0, mx = 0, tmx = 0, visible = true, dead = false, twinkleAt = 0;
+  const R = mulberry(4242);
+  const pick = a => a[Math.floor(R() * a.length)];
+
+  function layer(depth) {
+    const pad = 60, c = document.createElement('canvas');
+    c.width = (W + pad * 2) * dpr; c.height = G * dpr;
+    const x = c.getContext('2d'); x.scale(dpr, dpr);
+    const spec = [
+      { col: 'rgba(122,104,170,.55)', min: .10, max: .30, wmin: 26, wmax: 60, win: 0 },
+      { col: '#3a3570', min: .14, max: .40, wmin: 30, wmax: 70, win: .35 },
+      { col: '#1b1c45', min: .10, max: .30, wmin: 40, wmax: 90, win: .45 },
+    ][depth];
+    const wins = [];
+    let bx = -pad + R() * 20;
+    while (bx < W + pad) {
+      const bw = spec.wmin + R() * (spec.wmax - spec.wmin);
+      // keep the right edge low on the near layer so the glass tower reads
+      const bh = H * (spec.min + Math.pow(R(), 1.4) * (spec.max - spec.min));
+      const top = G - bh, X = bx + pad;
+      x.fillStyle = spec.col; x.fillRect(X, top, bw, bh);
+      if (R() < .35) { x.fillRect(X + bw * .3, top - 10 - R() * 20, bw * .4, 30); }       // setback
+      if (R() < .25) { x.fillRect(X + bw / 2 - 1, top - 30 - R() * 40, 2, 40); }           // antenna
+      if (depth === 1 && bh > H * .3) beacons.push({ x: X + bw / 2, y: top - 4, p: R() * 6 });
+      if (depth > 0) {
+        // sun-side edge catches the light
+        x.fillStyle = depth === 1 ? 'rgba(255,170,140,.18)' : 'rgba(255,170,140,.12)'; x.fillRect(X, top, 2, bh);
+        const cw = depth === 2 ? 5 : 3, ch = depth === 2 ? 6 : 4, gx = depth === 2 ? 9 : 6, gy = depth === 2 ? 11 : 8;
+        for (let wy = top + 8; wy < G - 8; wy += gy) for (let wx = X + 5; wx < X + bw - cw - 3; wx += gx) {
+          const on = R() < spec.win * (1 - (wy - top) / bh * .3);
+          const w = { x: wx, y: wy, w: cw, h: ch, on, warm: R() < .78 };
+          wins.push(w); paintWin(x, w);
+        }
+      }
+      bx += bw + (depth === 0 ? -6 : R() * 6);
+    }
+    return { c, x, depth, wins, pad };
+  }
+  function paintWin(x, w) {
+    x.fillStyle = w.on ? (w.warm ? 'rgba(255,206,140,.92)' : 'rgba(190,212,255,.85)') : 'rgba(150,140,210,.10)';
+    x.fillRect(w.x, w.y, w.w, w.h);
+  }
+  function makeTower() {
+    const c = document.createElement('canvas'), tw = Math.max(110, W * .2), th = H * .7;
+    c.width = tw * dpr; c.height = th * dpr;
+    const x = c.getContext('2d'); x.scale(dpr, dpr);
+    const g = x.createLinearGradient(0, 0, tw * .4, th);
+    g.addColorStop(0, '#1a1f52'); g.addColorStop(.5, '#3d3878'); g.addColorStop(.85, '#a2667f'); g.addColorStop(1, '#e09478');
+    x.fillStyle = g; x.fillRect(0, 0, tw, th);
+    // sky reflected in the glass, slightly offset per panel
+    for (let px = 0; px < tw; px += 26) { x.fillStyle = `rgba(255,255,255,${.03 + R() * .05})`; x.fillRect(px, 0, 13, th); }
+    x.fillStyle = 'rgba(10,12,40,.55)';
+    for (let py = 0; py < th; py += 16) x.fillRect(0, py, tw, 2);
+    for (let px = 0; px < tw; px += 26) x.fillRect(px, 0, 1.5, th);
+    // a few floors lit from inside
+    for (let py = 16; py < th; py += 16) if (R() < .1) {
+      const lx = R() * tw * .5; x.fillStyle = 'rgba(255,214,160,.4)'; x.fillRect(lx, py + 4, tw * (.15 + R() * .3), 8);
+    }
+    const sh = x.createLinearGradient(0, 0, tw, 0); sh.addColorStop(0, 'rgba(255,255,255,.18)'); sh.addColorStop(.08, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,20,.35)');
+    x.fillStyle = sh; x.fillRect(0, 0, tw, th);
+    return { c, w: tw, h: th };
+  }
+  function build() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = cv.clientWidth; H = cv.clientHeight; if (!W || !H) return;
+    cv.width = W * dpr; cv.height = H * dpr;
+    G = Math.round(H * .8);
+    beacons = [];
+    stars = Array.from({ length: Math.round(W / 14) }, () => ({ x: R() * W, y: R() * H * .38, r: .3 + R() * 1.1, p: R() * 6 }));
+    clouds = Array.from({ length: 7 }, () => ({ x: R() * W, y: H * (.08 + R() * .34), w: W * (.18 + R() * .3), h: 4 + R() * 12, s: 3 + R() * 7, a: .05 + R() * .12 }));
+    layers = [layer(0), layer(1), layer(2)];
+    tower = makeTower();
+  }
+  function frame(t) {
+    if (dead) return;
+    raf = requestAnimationFrame(frame);
+    if (!visible || t - last < 33) return;
+    const dt = Math.min(0.1, (t - (last || t)) / 1000); last = t;
+    mx += (tmx - mx) * .06;
+    draw(t / 1000, dt);
+  }
+  function draw(T, dt) {
+    if (!W) return;
+    const x = ctx; x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const sky = x.createLinearGradient(0, 0, 0, G);
+    sky.addColorStop(0, '#141a46'); sky.addColorStop(.35, '#2c2f74'); sky.addColorStop(.62, '#7a5a9a'); sky.addColorStop(.82, '#e48a7e'); sky.addColorStop(1, '#ffc58f');
+    x.fillStyle = sky; x.fillRect(0, 0, W, G);
+    for (const s of stars) { x.globalAlpha = (.35 + .45 * Math.sin(T * 1.3 + s.p)) * (1 - s.y / (H * .38)); x.fillStyle = '#fff'; x.fillRect(s.x, s.y, s.r, s.r); }
+    x.globalAlpha = 1;
+    // the sun, low and slowly sinking
+    const sx = W * .36 - mx * 6, sy = G - H * .05 + Math.sin(T * .05) * 4;
+    const glow = x.createRadialGradient(sx, sy, 0, sx, sy, H * .55);
+    glow.addColorStop(0, 'rgba(255,214,160,.95)'); glow.addColorStop(.06, 'rgba(255,190,140,.7)'); glow.addColorStop(.3, 'rgba(240,130,120,.22)'); glow.addColorStop(1, 'rgba(240,130,120,0)');
+    x.fillStyle = glow; x.fillRect(0, 0, W, G);
+    x.fillStyle = '#ffe2b8'; x.beginPath(); x.arc(sx, sy, Math.max(14, H * .035), 0, 7); x.fill();
+    for (const c of clouds) {
+      c.x += c.s * dt; if (c.x - c.w > W) c.x = -c.w;
+      const cg = x.createLinearGradient(0, c.y - c.h, 0, c.y + c.h); cg.addColorStop(0, `rgba(255,190,190,${c.a})`); cg.addColorStop(1, `rgba(120,90,170,${c.a * .6})`);
+      x.fillStyle = cg; x.beginPath(); x.ellipse(c.x, c.y, c.w / 2, c.h, 0, 0, 7); x.fill();
+    }
+    // twinkle a few windows so the city feels lived in
+    if (T - twinkleAt > .25 && layers.length) {
+      twinkleAt = T;
+      for (let i = 0; i < 4; i++) { const L = layers[1 + (i % 2)]; if (!L.wins.length) continue; const w = pick(L.wins); w.on = !w.on; L.x.clearRect(w.x, w.y, w.w, w.h); L.x.fillStyle = L.depth === 1 ? '#3a3570' : '#1b1c45'; L.x.fillRect(w.x, w.y, w.w, w.h); paintWin(L.x, w); }
+    }
+    layers.forEach((L, i) => { const off = -L.pad + mx * (4 + i * 8); x.drawImage(L.c, off, 0, L.c.width / dpr, G); if (i === 1) drawBeacons(T, off); });
+    // haze where the city meets the water
+    const hz = x.createLinearGradient(0, G - H * .12, 0, G); hz.addColorStop(0, 'rgba(255,170,140,0)'); hz.addColorStop(1, 'rgba(255,170,140,.22)');
+    x.fillStyle = hz; x.fillRect(0, G - H * .12, W, H * .12);
+    if (tower) x.drawImage(tower.c, W - tower.w + 10 + mx * 18, G - tower.h, tower.w, tower.h);
+    // water: the scene above, mirrored and rippled
+    const depth = H - G;
+    x.fillStyle = '#121638'; x.fillRect(0, G, W, depth);
+    for (let y = 0; y < depth; y += 2) {
+      const src = G - 2 - y * 1.3; if (src < 0) break;
+      const off = Math.sin(y * .22 + T * 2.2) * (1 + y * .06);
+      x.globalAlpha = .55 - (y / depth) * .35;
+      x.drawImage(cv, 0, src * dpr, W * dpr, 2 * dpr, off, G + y, W, 2);
+    }
+    x.globalAlpha = 1;
+    const wt = x.createLinearGradient(0, G, 0, H); wt.addColorStop(0, 'rgba(40,40,110,.15)'); wt.addColorStop(1, 'rgba(8,10,30,.7)');
+    x.fillStyle = wt; x.fillRect(0, G, W, depth);
+    x.fillStyle = 'rgba(255,220,190,.55)'; x.fillRect(0, G, W, 1);
+    // glint of the sun on the water
+    for (let i = 0; i < 9; i++) { const gy = G + 4 + i * (depth / 10), gw = 30 + i * 10 + Math.sin(T * 3 + i) * 8; x.fillStyle = `rgba(255,214,170,${.35 - i * .03})`; x.fillRect(sx - gw / 2 + Math.sin(T * 2 + i) * 3, gy, gw, 1.5); }
+  }
+  function drawBeacons(T, off) {
+    for (const b of beacons) { const on = Math.sin(T * 2.4 + b.p) > .55; if (!on) continue; ctx.fillStyle = 'rgba(255,80,80,.95)'; ctx.beginPath(); ctx.arc(b.x + off, b.y, 1.8, 0, 7); ctx.fill(); }
+  }
+  const onMove = e => { const r = cv.getBoundingClientRect(); tmx = ((e.clientX - r.left) / r.width - .5) * 2; };
+  const ro = new ResizeObserver(() => { build(); draw(performance.now() / 1000, 0); });
+  ro.observe(cv);
+  const io = new IntersectionObserver(es => { visible = es[0].isIntersecting; }); io.observe(cv);
+  cv.parentElement.addEventListener('pointermove', onMove);
+  build(); draw(0, 0);
+  if (!reduce) raf = requestAnimationFrame(frame);
+  return { destroy() { dead = true; cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); } };
 }
 function countUp(root) {
   $$('[data-count]', root).forEach(el => {
@@ -755,14 +923,14 @@ function coin(v, id) {
   if (!c) { v.innerHTML = `<div class="empty"><h2>Coin not found</h2><p>It may have been removed by a demo reset.</p><a class="btn primary" href="#/">Back to the board</a></div>`; return; }
   let side = 'buy';
   v.innerHTML = `<div class="coin-top">${logo(c, 'lg')}<div class="t"><div class="tags"><span class="pairtag">${esc(c.sym)} / ${c.co}</span><span class="pill">${esc(c.app)}</span>${c.graduated ? '<span class="pill grad">Graduated · pool locked</span>' : ''}${c.tax ? `<span class="pill">creator tax ${(c.tax * 100).toFixed(2)}%</span>` : ''}</div><h1 style="font-size:clamp(28px,4vw,40px)">${esc(c.name)}</h1></div>
-    <div class="price"><div class="p" id="cPx">${money(priceUsd(c), { co: c.co })}</div><div class="mono micro" id="cCh"></div></div>${starBtn(c.id)}</div>
+    <div class="price"><div class="p" id="cPx">${money(priceUsd(c), { co: c.co })}</div><div class="mono micro" id="cCh"></div></div>${starBtn(c.id)}<button class="icon-btn share-btn" id="shareBtn" type="button" title="Copy link to this coin" aria-label="Copy link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button></div>
   <div class="coin-grid"><div>
     <div class="panel"><div class="tf"><div class="seg" id="tfSeg">${[[60, '1m'], [300, '5m'], [900, '15m'], [3600, '1h']].map(([s, l]) => `<button data-s="${s}" class="${chartTf === s ? 'on' : ''}">${l}</button>`).join('')}</div><span class="micro mono">price in ${ui.ccy === 'SHARES' ? c.co + ' shares' : ui.ccy}</span></div><div class="chart-box" id="chartBox"></div></div>
-    <div class="panel"><div class="bar" style="justify-content:space-between;margin-bottom:10px"><h3>Trades</h3><span class="micro"><span class="live-dot"></span>live</span></div><div class="tbl-wrap" style="border:0"><table class="trades"><thead><tr><th>Side</th><th class="r">${esc(c.sym)}</th><th class="r">Value</th><th class="r">Price</th><th>Trader</th><th class="r">Age</th></tr></thead><tbody id="trBody"></tbody></table></div></div>
+    <div class="panel"><div class="bar" style="justify-content:space-between;margin-bottom:10px"><div class="tabs" id="lowTabs" role="tablist"><button class="on" data-t="trades" role="tab">Trades</button><button data-t="holders" role="tab">Holders</button></div><span class="micro"><span class="live-dot"></span>live</span></div><div id="lowTrades" class="tbl-wrap" style="border:0;background:none"><table class="trades"><thead><tr><th>Side</th><th class="r">${esc(c.sym)}</th><th class="r">Value</th><th class="r">Price</th><th>Trader</th><th class="r">Age</th></tr></thead><tbody id="trBody"></tbody></table></div><div id="lowHolders" hidden></div></div>
   </div><div>
     <div class="panel trade"><div class="seg" id="sideSeg"><button class="on buy" data-side="buy" type="button">Buy</button><button class="sell" data-side="sell" type="button">Sell</button></div>
       <div class="field"><label for="amt"><span id="amtLbl">You pay</span><span id="balLbl" class="mono"></span></label><div class="inp"><input id="amt" inputmode="decimal" placeholder="0.00" autocomplete="off"><span id="amtUnit">USD</span></div><div class="quick" id="quick"></div></div>
-      <div class="quote" id="quote"></div><div class="err" id="tErr"></div>
+      <div class="slip"><span>Max slippage</span><div class="seg" id="slipSeg">${[0.005, 0.01, 0.03].map(v2 => `<button type="button" data-v="${v2}" class="${ui.slip === v2 ? 'on' : ''}">${v2 * 100}%</button>`).join('')}</div></div><div class="quote" id="quote"></div><div class="err" id="tErr"></div>
       <button class="btn primary big" id="tradeBtn" type="button" style="width:100%">Buy ${esc(c.sym)}</button></div>
     <div class="panel"><div class="eyebrow" style="margin-bottom:8px">${c.graduated ? 'Graduated' : 'Bonding curve'}</div>${c.graduated ? `<p class="hint">Graduated ${ago(c.gradAt)} ago. Trades now route through the locked pool.</p>` : `<div class="prog"><i id="cProg" style="width:${progress(c) * 100}%"></i></div><div class="kv"><span>Sold</span><span id="cSold"></span></div>`}
       <div class="kv"><span>Market cap</span><span id="cMcap"></span></div><div class="kv"><span>Stock in curve</span><span id="cRes"></span></div><div class="kv"><span>vs ${c.co} since launch</span><span id="cEx"></span></div><div class="kv"><span>Holders</span><span id="cHold"></span></div><div class="kv"><span>Creator</span><span>${short(c.creator)}</span></div><div class="kv"><span>Launched</span><span>${ago(c.created)} ago</span></div>
@@ -774,6 +942,11 @@ function coin(v, id) {
   $('#tfSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; chartTf = +b.dataset.s; store('sc.tf', chartTf); $$('#tfSeg button').forEach(x => x.classList.toggle('on', x === b)); feedChart(c, true); };
   $('#quick').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (side === 'buy') amt.value = b.dataset.v; else { const hb = (W && c.holders[W.addr]) || 0; amt.value = +b.dataset.v === 1 ? String(hb) : String(Math.floor(hb * +b.dataset.v)); } paintTrade(); };
   amt.oninput = () => paintTrade();
+  $('#slipSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; ui.slip = +b.dataset.v; store('sc.slip', ui.slip); $$('#slipSeg button').forEach(x => x.classList.toggle('on', x === b)); paintTrade(); };
+  $('#lowTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; lowTab = b.dataset.t; $$('#lowTabs button').forEach(x => x.classList.toggle('on', x === b)); $('#lowTrades').hidden = lowTab !== 'trades'; $('#lowHolders').hidden = lowTab !== 'holders'; refreshCoin(c); };
+  $('#shareBtn').onclick = () => { const url = location.href; try { navigator.clipboard.writeText(url).then(() => toast('Link copied'), () => toast(url)); } catch (e2) { toast(url); } };
+  coinPaint = () => { if (document.activeElement !== $('#tradeBtn')) paintTrade(); };
+  let quoted = null;
   amt.onkeydown = e => { if (e.key === 'Enter') $('#tradeBtn').click(); };
   function paintTrade() {
     const px = S.stocks[c.co].px;
@@ -784,6 +957,7 @@ function coin(v, id) {
     const err = $('#tErr'); err.textContent = '';
     let q = null;
     if (n > 0) q = side === 'buy' ? quoteBuy(c, n / px) : quoteSell(c, n);
+    quoted = q ? { side, n, out: q.out } : null;
     const btn = $('#tradeBtn');
     if (!W) { btn.textContent = 'Connect to trade'; btn.disabled = false; }
     else { btn.textContent = (side === 'buy' ? 'Buy ' : 'Sell ') + c.sym; btn.disabled = !(n > 0); }
@@ -794,18 +968,22 @@ function coin(v, id) {
         <div class="kv"><span>Leg 1 · USD → ${c.co}</span><span>${fmtTiny(n / px)} sh @ ${money(px)}</span></div>
         <div class="kv"><span>Leg 2 · ${c.co} → ${esc(c.sym)}</span><span>impact ${pct(q.impact)}</span></div>
         <div class="kv"><span>Fees</span><span>${money((q.fee + q.tax) * px)}</span></div>
+        <div class="kv"><span>Min received</span><span>${tok(q.out * (1 - ui.slip))} ${esc(c.sym)}</span></div>
         ${q.refund > 1e-9 ? `<div class="kv"><span>Refund (curve full)</span><span>${money(q.refund * px)}</span></div>` : ''}`;
     } else {
       $('#quote').innerHTML = `<div class="kv"><span>You get</span><span><b>${money(q.out * px)}</b></span></div>
         <div class="kv"><span>Leg 1 · ${esc(c.sym)} → ${c.co}</span><span>${fmtTiny(q.out)} sh</span></div>
         <div class="kv"><span>Leg 2 · ${c.co} → USD</span><span>@ ${money(px)}</span></div>
-        <div class="kv"><span>Impact</span><span>${pct(q.impact)}</span></div><div class="kv"><span>Fees</span><span>${money((q.fee + q.tax) * px)}</span></div>`;
+        <div class="kv"><span>Impact</span><span>${pct(q.impact)}</span></div><div class="kv"><span>Fees</span><span>${money((q.fee + q.tax) * px)}</span></div><div class="kv"><span>Min received</span><span>${money(q.out * px * (1 - ui.slip))}</span></div>`;
     }
   }
   $('#tradeBtn').onclick = () => {
     if (!W) return openConnect(() => { location.hash = '#/coin/' + c.id; });
     const n = parseFloat(amt.value) || 0; if (!(n > 0)) return;
     const px = S.stocks[c.co].px;
+    // slippage guard: the market keeps moving between the quote you read and the click
+    const fresh = side === 'buy' ? quoteBuy(c, n / px) : quoteSell(c, n);
+    if (quoted && quoted.side === side && quoted.n === n && fresh.out < quoted.out * (1 - ui.slip)) { paintTrade(); return $('#tErr').textContent = `Price moved more than ${ui.slip * 100}% since your quote. Check the new quote and try again.`; }
     if (side === 'buy') {
       if (n > W.usd + 1e-9) return;
       const q = tradeBuy(S, c, n / px, W.addr);
@@ -824,6 +1002,14 @@ function coin(v, id) {
   refreshCoin(c);
   mountChart(c);
 }
+let lowTab = 'trades', coinPaint = null;
+function holdersHtml(c) {
+  const rows = Object.entries(c.holders).sort((a, b) => b[1] - a[1]);
+  const inCurve = TOTAL - rows.reduce((s, r) => s + r[1], 0);
+  const list = [[c.graduated ? 'Locked pool' : 'Bonding curve', inCurve]].concat(rows.slice(0, 12));
+  const tag = a => a === 'Bonding curve' || a === 'Locked pool' ? `<b>${a}</b>` : (W && a === W.addr ? '<b>you</b>' : `<span class="mono">${short(a)}</span>`) + (a === c.creator ? ' <span class="pill">creator</span>' : '');
+  return list.map(([a, b], i) => `<div class="hbar"><span class="mono muted">${i ? i : '◎'}</span><div><div>${tag(a)}</div><div class="track"><i style="width:${(b / TOTAL * 100).toFixed(2)}%"></i></div></div><span class="mono">${(b / TOTAL * 100).toFixed(2)}%</span></div>`).join('') + `<p class="hint" style="margin-top:8px">${rows.length} holders. Share of the 1B total supply.</p>`;
+}
 function refreshCoin(c) {
   if (!$('#cPx')) return;
   const ch = change24(c);
@@ -835,6 +1021,8 @@ function refreshCoin(c) {
   const ex = excess(c); $('#cEx').innerHTML = `<span class="${cls(ex)}">${pct(ex)}</span>`;
   $('#cHold').textContent = Object.keys(c.holders).length;
   const addrLbl = a => W && a === W.addr ? '<b>you</b>' : short(a);
+  if (lowTab === 'holders' && $('#lowHolders')) $('#lowHolders').innerHTML = holdersHtml(c);
+  if (coinPaint) coinPaint();
   $('#trBody').innerHTML = c.trades.slice(-30).reverse().map(t => `<tr><td class="${t.side === 'buy' ? 'up' : 'down'}">${t.side === 'buy' ? 'Buy' : 'Sell'}</td><td class="r mono">${tok(t.tok)}</td><td class="r mono">${money(t.usd)}</td><td class="r mono">${money(t.p)}</td><td class="mono micro">${addrLbl(t.who)}</td><td class="r mono muted">${ago(t.t)}</td></tr>`).join('');
   feedChart(c);
 }
@@ -896,6 +1084,9 @@ function tickBots() {
   if (botR() < 0.56 || !bots.length) tradeBuy(S, c, (15 + Math.pow(botR(), 2.5) * 600) / px, randAddr(botR));
   else { const who = bots[Math.floor(botR() * bots.length)]; tradeSell(S, c, c.holders[who] * (0.15 + botR() * 0.6), who); }
   const up = priceUsd(c) >= before;
+  const feed = $('#feed');
+  if (feed && c.trades.length) { feed.insertAdjacentHTML('afterbegin', feedItem(c, c.trades[c.trades.length - 1])); while (feed.children.length > 14) feed.lastElementChild.remove(); }
+  paintDuskCard();
   // update what is on screen without a full re-render
   const el = $(`.card[data-coin="${CSS.escape(c.id)}"]`);
   if (el) {
