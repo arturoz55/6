@@ -8,7 +8,7 @@ preview. Run it again to refresh the snapshot:  python3 tools-snapshot.py
 import base64, json, time, urllib.request
 
 DS = "https://api.dexscreener.com"
-UA = {"User-Agent": "sharecurve-snapshot/1.0"}
+UA = {"User-Agent": "kruv-snapshot/1.0"}
 
 def get(url, raw=False):
     with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:

@@ -1,4 +1,4 @@
-/* Sharecurve — a stock-paired bonding-curve launchpad, running on an in-browser demo ledger.
+/* Kruv — a stock-paired bonding-curve launchpad, running on an in-browser demo ledger.
    MIT licensed. See LICENSE. */
 (function () {
 'use strict';
@@ -394,7 +394,7 @@ function closeModal() { const m = $('.scrim'); if (m) m.remove(); }
 
 const LICENSE = `MIT License
 
-Copyright (c) 2026 Sharecurve contributors
+Copyright (c) 2026 Kruv contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -530,7 +530,7 @@ function openConnect(then) {
   openModal('Connect a wallet', `<div class="wm" id="wm">
     <div class="mh"><div class="wm-title"><button class="icon-btn wm-back" id="wmBack" type="button" aria-label="Back" hidden>←</button><h3 id="wmH">Connect a wallet</h3></div><button class="icon-btn" data-close aria-label="Close">✕</button></div>
     <div class="wm-body" id="wmBody"></div>
-    <div class="wm-foot"><button class="foot-link" type="button" id="wmHelp">New to wallets?</button><span class="micro">Sharecurve never asks for your recovery phrase.</span></div>
+    <div class="wm-foot"><button class="foot-link" type="button" id="wmHelp">New to wallets?</button><span class="micro">Kruv never asks for your recovery phrase.</span></div>
   </div>`, { raw: true });
   $('#wmBack').onclick = () => wmShow('list');
   $('#wmHelp').onclick = () => wmShow('help');
@@ -571,7 +571,7 @@ function wmList(body, quiet) {
   let i = 0;
   body.innerHTML = `<div class="wm-tools"><div class="seg" id="wmChain" role="tablist">${[['all', 'All'], ['evm', 'Ethereum & EVM'], ['sol', 'Solana']].map(([k, l]) => `<button type="button" role="tab" data-c="${k}" class="${wmState.chain === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <input class="search" id="wmQ" placeholder="Search wallets" value="${esc(wmState.q)}" aria-label="Search wallets" autocomplete="off"></div>
-    ${framed && !rows.some(r => r.installed) ? `<div class="wm-note"><b>Can't see your wallet?</b> This page is running inside a preview frame, and browser extensions often stay hidden there. Open Sharecurve in its own tab to use MetaMask, Phantom and the rest. <button class="btn ghost" type="button" id="wmCopyUrl">Copy page link</button></div>` : ''}
+    ${framed && !rows.some(r => r.installed) ? `<div class="wm-note"><b>Can't see your wallet?</b> This page is running inside a preview frame, and browser extensions often stay hidden there. Open Kruv in its own tab to use MetaMask, Phantom and the rest. <button class="btn ghost" type="button" id="wmCopyUrl">Copy page link</button></div>` : ''}
     <div class="wm-sec">${inst.length ? `<span class="eyebrow">Detected in this browser</span>${inst.map(r => row(r, i++)).join('')}` : ''}</div>
     <div class="wm-sec">${rest.length ? `<span class="eyebrow">${inst.length ? 'More wallets' : 'Popular wallets'}</span>${rest.map(r => row(r, i++)).join('')}` : ''}</div>
     ${!inst.length && !rest.length ? `<div class="empty">No wallet matches “${esc(wmState.q)}”.</div>` : ''}
@@ -669,7 +669,7 @@ function wmInstall(body, r) {
     <ol class="wm-howto"><li><a class="btn primary" href="${esc(r.k.url)}" target="_blank" rel="noopener noreferrer">Install ${esc(r.k.name)} ↗</a></li>
       <li>Create a wallet or import one, then come back to this tab.</li>
       <li><button class="btn ghost" type="button" id="wmRecheck">I installed it, check again</button></li></ol>
-    ${canDeep ? `<div class="wm-qr"><div id="wmQr" class="wm-qrbox" aria-label="QR code"></div><div><b>On your phone?</b><p class="micro">Scan to open Sharecurve inside the ${esc(r.k.name)} app's browser, where it connects straight away.</p><div class="bar" style="margin:8px 0 0"><a class="btn ghost" href="${esc(r.k.deep(link))}" target="_blank" rel="noopener noreferrer">Open in app</a><button class="btn ghost" type="button" id="wmCopyDeep">Copy link</button></div></div></div>` : ''}
+    ${canDeep ? `<div class="wm-qr"><div id="wmQr" class="wm-qrbox" aria-label="QR code"></div><div><b>On your phone?</b><p class="micro">Scan to open Kruv inside the ${esc(r.k.name)} app's browser, where it connects straight away.</p><div class="bar" style="margin:8px 0 0"><a class="btn ghost" href="${esc(r.k.deep(link))}" target="_blank" rel="noopener noreferrer">Open in app</a><button class="btn ghost" type="button" id="wmCopyDeep">Copy link</button></div></div></div>` : ''}
   </div>`;
   $('#wmRecheck').onclick = () => {
     const b = $('#wmRecheck'); b.textContent = 'Looking…'; askWallets();
@@ -688,10 +688,10 @@ function wmInstall(body, r) {
 }
 function wmHelp(body) {
   body.innerHTML = `<div class="prose wm-help">
-    <p>A wallet is an app or browser extension that holds your crypto address. Connecting one lets Sharecurve see your address. It can't move funds without your approval.</p>
+    <p>A wallet is an app or browser extension that holds your crypto address. Connecting one lets Kruv see your address. It can't move funds without your approval.</p>
     <details open><summary>Which one should I get?</summary><p><strong>Phantom</strong> if you want Solana and Ethereum in one app. <strong>MetaMask</strong> or <strong>Rabby</strong> for Ethereum and its networks. <strong>Coinbase Wallet</strong> if you already use Coinbase.</p></details>
     <details><summary>Is connecting safe?</summary><p>Connecting shares your public address. Signing in asks you to sign a free message, which does not send a transaction. Never type your recovery phrase into a website.</p></details>
-    <details><summary>Do I need real money here?</summary><p>No. Trading on Sharecurve uses the demo ledger. Every address gets ${money(START_USD)} of test funds.</p></details>
+    <details><summary>Do I need real money here?</summary><p>No. Trading on Kruv uses the demo ledger. Every address gets ${money(START_USD)} of test funds.</p></details>
     <div class="bar" style="margin:6px 0 0"><button class="btn primary" type="button" id="wmHelpDemo">Try the demo wallet</button><button class="btn ghost" type="button" id="wmHelpBack">See wallets</button></div></div>`;
   $('#wmHelpDemo').onclick = () => { wmShow('list'); const d = $('#wDemo'); if (d) wmDemo(d); };
   $('#wmHelpBack').onclick = () => wmShow('list');
@@ -723,7 +723,7 @@ async function refreshNative() {
 const fmtNative = () => W && W.native ? W.native.v.toLocaleString('en-US', { maximumFractionDigits: 5 }) + ' ' + W.native.sym : 'Unavailable';
 async function signIn() {
   if (!W || W.kind === 'demo' || !activeProvider) return toast('Connect a real wallet to sign in.');
-  const msg = `Sign in to Sharecurve (demo network)\n\nAddress: ${W.addr}\nNonce: ${Math.random().toString(36).slice(2, 10)}\nIssued: ${new Date().toISOString()}\n\nThis signature costs nothing and does not send a transaction.`;
+  const msg = `Sign in to Kruv (demo network)\n\nAddress: ${W.addr}\nNonce: ${Math.random().toString(36).slice(2, 10)}\nIssued: ${new Date().toISOString()}\n\nThis signature costs nothing and does not send a transaction.`;
   try {
     let sig;
     if (W.kind === 'evm') {
@@ -1552,7 +1552,7 @@ function render() {
   if (!fn) { view.innerHTML = `<div class="empty"><h2>Nothing here</h2><p>That page does not exist.</p><a class="btn primary" href="#/">Back to the board</a></div>`; return; }
   fn(view, a);
   drawSparks();
-  document.title = 'Sharecurve' + (p ? ' · ' + (p === 'coin' && S.coins[a] ? S.coins[a].sym : p === 'live' && LIVE.pairs.get(a) ? LIVE.pairs.get(a).baseToken.symbol : (NAV.find(n => n[0] === p) || [0, TITLES[p] || p])[1]) : '');
+  document.title = 'Kruv' + (p ? ' · ' + (p === 'coin' && S.coins[a] ? S.coins[a].sym : p === 'live' && LIVE.pairs.get(a) ? LIVE.pairs.get(a).baseToken.symbol : (NAV.find(n => n[0] === p) || [0, TITLES[p] || p])[1]) : '');
 }
 window.addEventListener('hashchange', () => { closeModal(); closePeek(true); transition(() => { window.scrollTo(0, 0); render(); }); });
 
@@ -1562,15 +1562,15 @@ function home(v) {
   const vol = coins.reduce((s, c) => s + vol24(c), 0);
   const grads = coins.filter(c => c.graduated).length;
   const held = coins.reduce((s, c) => s + Math.max(0, c.vq - c.vq0) * S.stocks[c.co].px, 0);
-  const word = 'sharecurve';
-  v.innerHTML = `<section class="dusk" aria-label="Sharecurve">
+  const word = 'kruv';
+  v.innerHTML = `<section class="dusk" aria-label="Kruv">
     <div class="dusk-top">
       <span class="eyebrow"><span class="live-dot"></span>Demo network · live</span>
       <p class="lede">Launch a coin priced in shares of the company behind the app. Instagram trades against <em>META</em>, YouTube against <em>GOOGL</em>, Netflix against <em>NFLX</em>. Every buy puts the stock itself into the curve.</p>
       <div class="dusk-pair" aria-hidden="true"><span class="pd" id="pd"><b>Instagram</b>→<i>META</i></span><span>the curve holds the stock</span></div>
       <div class="cta"><a class="btn white big" href="#/launch">Launch a coin</a><a class="btn glass big" href="#/docs/pairing">How pairing works</a></div>
     </div>
-    <div class="dusk-word" aria-hidden="true">${word.split('').map((ch, i) => `<span style="animation-delay:${0.15 + i * 0.045}s">${ch}</span>`).join('')}</div>
+    <div class="dusk-word" aria-hidden="true"><span class="dusk-mark"></span><span>${word.split('').map((ch, i) => `<span style="animation-delay:${0.25 + i * 0.07}s">${ch}</span>`).join('')}</span></div>
     <a class="dusk-card" id="duskCard" href="#/"></a>
   </section>
   <div class="stats">

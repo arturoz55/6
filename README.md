@@ -1,4 +1,4 @@
-# Sharecurve
+# Kruv
 
 A launchpad for coins quoted in shares of the company behind an app. An Instagram coin trades against META, a YouTube coin against GOOGL. Each coin has a fixed supply of 1B. 800M sell on a constant-product bonding curve, and the pool locks at graduation.
 
