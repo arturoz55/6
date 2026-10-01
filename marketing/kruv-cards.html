@@ -1,0 +1,101 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="fonts-local.css">
+<style>html,body{margin:0;background:#05070f}canvas{display:block}</style>
+</head><body>
+<canvas id="c" width="1600" height="900"></canvas>
+<script>
+// Kruv tweet cards, 1600x900. draw(n) paints card n.
+const W = 1600, H = 900, x = document.getElementById('c').getContext('2d');
+const mark = new Image(); mark.src = 'mark.png';
+const C = { ink: '#eef1fb', ink2: '#aab3cf', ink3: '#6c7699', acc: '#ffb27a', teal: '#8fb6ff', up: '#5ee0a6', line: 'rgba(255,255,255,.14)' };
+const DISP = "'Bricolage Grotesque', sans-serif", MONO = "'IBM Plex Mono', monospace";
+let seed = 11; const R = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+function bg() {
+  seed = 11;
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#05070f'); g.addColorStop(.65, '#0d1433'); g.addColorStop(1, '#17183a');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  const glow = x.createRadialGradient(W * .85, H * .1, 0, W * .85, H * .1, 700); glow.addColorStop(0, 'rgba(255,170,120,.16)'); glow.addColorStop(1, 'rgba(255,170,120,0)');
+  x.fillStyle = glow; x.fillRect(0, 0, W, H);
+  for (let i = 0; i < 140; i++) { x.globalAlpha = .2 + R() * .5; x.fillStyle = '#fff'; const r = R() * 1.6 + .3; x.fillRect(R() * W, R() * H * .7, r, r); }
+  x.globalAlpha = 1;
+  let px = -10; while (px < W) { const w = 30 + R() * 70, h = 40 + Math.pow(R(), 1.7) * 170; x.fillStyle = '#0a0e24'; x.fillRect(px, H - h, w, h);
+    for (let wy = H - h + 10; wy < H - 8; wy += 15) for (let wx = px + 6; wx < px + w - 8; wx += 12) if (R() < .3) { x.fillStyle = R() < .85 ? 'rgba(255,206,140,.45)' : 'rgba(150,190,255,.45)'; x.fillRect(wx, wy, 5, 7); }
+    px += w + R() * 6; }
+  const fog = x.createLinearGradient(0, H - 260, 0, H); fog.addColorStop(0, 'rgba(5,7,15,0)'); fog.addColorStop(1, 'rgba(5,7,15,.8)'); x.fillStyle = fog; x.fillRect(0, H - 260, W, 260);
+}
+function T(s, px, py, size, o = {}) { x.save(); x.font = `${o.w || 700} ${size}px ${o.f || DISP}`; x.fillStyle = o.c || C.ink; x.textAlign = o.al || 'left'; if (o.ls) x.letterSpacing = o.ls + 'px'; x.fillText(s, px, py); const w = x.measureText(s).width; x.restore(); return w; }
+function brand() { // corner signature
+  x.drawImage(mark, 70, 56, 52, 52);
+  T('kruv', 132, 98, 40, { w: 300 });
+  T('$KRUV', W - 70, 96, 30, { f: MONO, w: 600, c: C.acc, al: 'right', ls: 3 });
+}
+function eyebrow(s, py = 200) { T(s.toUpperCase(), 90, py, 24, { f: MONO, w: 500, c: C.ink3, ls: 4 }); }
+function pill(cx, cy, label, o = {}) {
+  x.save(); const size = o.size || 34; x.font = `600 ${size}px ${MONO}`; const w = x.measureText(label).width + 50, h = size + 30;
+  x.fillStyle = o.bg || 'rgba(255,255,255,.07)'; x.strokeStyle = o.st || 'rgba(255,255,255,.2)'; x.lineWidth = 2;
+  x.beginPath(); x.roundRect(cx - w / 2, cy - h / 2, w, h, h / 2); x.fill(); x.stroke();
+  x.fillStyle = o.c || C.ink; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(label, cx, cy + 2); x.restore();
+}
+function panel(px, py, w, h) { x.fillStyle = 'rgba(14,20,44,.72)'; x.strokeStyle = C.line; x.lineWidth = 2; x.beginPath(); x.roundRect(px, py, w, h, 22); x.fill(); x.stroke(); }
+
+const CARDS = [
+  // 1. what it is
+  () => { eyebrow('What is Kruv');
+    T('Every coin has a stock', 90, 320, 84); T('behind it.', 90, 420, 84, { c: C.acc });
+    T('Coins launched on Kruv are quoted in shares of the', 90, 510, 32, { w: 500, c: C.ink2 });
+    T('company that owns the app they are named after.', 90, 556, 32, { w: 500, c: C.ink2 });
+    x.drawImage(mark, 1060, 230, 400, 400); },
+  // 2. pairing
+  () => { eyebrow('How pairing works');
+    T('The app decides the pair.', 90, 310, 76); T('Nobody picks their own.', 90, 400, 76, { c: C.acc });
+    const rows = [['Instagram', 'META'], ['YouTube', 'GOOGL'], ['Netflix', 'NFLX'], ['Spotify', 'SPOT'], ['Uber', 'UBER'], ['Reddit', 'RDDT']];
+    rows.forEach(([a, t], i) => { const col = i % 3, row = Math.floor(i / 3); const cx = 300 + col * 500, cy = 545 + row * 120;
+      pill(cx - 130, cy, a, { size: 32 }); T('->', cx + 20, cy + 11, 34, { f: MONO, w: 500, c: C.ink3, al: 'center' }); pill(cx + 150, cy, t, { size: 32, c: C.acc, bg: 'rgba(255,178,122,.12)', st: 'rgba(255,178,122,.5)' }); }); },
+  // 3. supply split
+  () => { eyebrow('Supply');
+    T('One billion coins.', 90, 310, 84); T('Minted once.', 90, 405, 84, { c: C.acc });
+    const bx = 90, by = 500, bw = 1420, bh = 90;
+    x.fillStyle = C.acc; x.beginPath(); x.roundRect(bx, by, bw * .8, bh, [22, 0, 0, 22]); x.fill();
+    x.fillStyle = C.teal; x.beginPath(); x.roundRect(bx + bw * .8 + 6, by, bw * .2 - 6, bh, [0, 22, 22, 0]); x.fill();
+    T('800,000,000', bx + 30, by + 60, 40, { f: MONO, w: 600, c: '#1d0f06' }); T('200,000,000', bx + bw * .8 + 30, by + 60, 34, { f: MONO, w: 600, c: '#0b1124' });
+    T('sold on the bonding curve', bx, by + 140, 30, { w: 500, c: C.ink2 }); T('locked in the pool at graduation', bx + bw, by + 140, 30, { w: 500, c: C.ink2, al: 'right' }); },
+  // 4. curve
+  () => { eyebrow('The curve');
+    T('Every buy puts real', 90, 300, 74); T('shares into the curve.', 90, 385, 74, { c: C.acc });
+    T('The reserve is the stock itself,', 90, 470, 32, { w: 500, c: C.ink2 }); T('not dollars sitting on the side.', 90, 514, 32, { w: 500, c: C.ink2 });
+    const ox = 980, oy = 760, gw = 520, gh = 470;
+    x.strokeStyle = 'rgba(255,255,255,.2)'; x.lineWidth = 3; x.beginPath(); x.moveTo(ox, oy - gh); x.lineTo(ox, oy); x.lineTo(ox + gw, oy); x.stroke();
+    const cur = s => Math.pow(1.073 / (1.073 - .8 * s), 2), top = cur(1);
+    x.beginPath(); for (let i = 0; i <= 100; i++) { const s = i / 100, px = ox + s * gw, py = oy - (cur(s) - 1) / (top - 1) * gh; i ? x.lineTo(px, py) : x.moveTo(px, py); }
+    x.strokeStyle = C.acc; x.lineWidth = 8; x.lineCap = 'round'; x.stroke();
+    const s0 = .72, dx = ox + s0 * gw, dy = oy - (cur(s0) - 1) / (top - 1) * gh; x.fillStyle = C.teal; x.beginPath(); x.arc(dx, dy, 16, 0, 7); x.fill();
+    T('price', ox - 10, oy - gh - 16, 24, { f: MONO, w: 500, c: C.ink3, al: 'right' }); T('coins sold', ox + gw, oy + 44, 24, { f: MONO, w: 500, c: C.ink3, al: 'right' }); },
+  // 5. two legs
+  () => { eyebrow('Two legs');
+    T('Beat the stock,', 90, 300, 84); T('not just the dollar.', 90, 395, 84, { c: C.acc });
+    panel(90, 470, 1420, 220);
+    T('return in $  =  (1 + coin vs stock) x (1 + stock vs $) - 1', 800, 565, 34, { f: MONO, w: 600, al: 'center' });
+    T('A coin can only climb in shares if people prefer it to the company itself.', 800, 630, 28, { w: 500, c: C.ink2, al: 'center' }); },
+  // 6. fees
+  () => { eyebrow('Fees');
+    T('Simple, and fixed', 90, 300, 84); T('at launch.', 90, 395, 84, { c: C.acc });
+    const items = [['1%', 'curve fee, on every buy and sell'], ['0-2%', 'creator tax, set once at launch'], ['0%', 'creator tax, after graduation'], ['Free', 'to launch, no upfront cost']];
+    items.forEach(([v, l], i) => { const cx = 90 + i * 360; panel(cx, 470, 340, 220); T(v, cx + 30, 560, 64, { f: MONO, w: 600, c: i === 0 ? C.acc : C.ink }); T(l.split(', ')[0], cx + 30, 620, 24, { w: 500, c: C.ink2 }); if (l.includes(', ')) T(l.split(', ')[1], cx + 30, 654, 24, { w: 500, c: C.ink2 }); }); },
+  // 7. graduation
+  () => { eyebrow('Graduation');
+    T('Sell out the curve.', 90, 300, 84); T('Liquidity locks for good.', 90, 395, 84, { c: C.acc });
+    T('The curve\'s stock and the last 200M coins form a pool.', 90, 480, 32, { w: 500, c: C.ink2 }); T('There is no withdraw path for anyone, team included.', 90, 524, 32, { w: 500, c: C.ink2 });
+    const cx = 1240, py = 690;
+    x.fillStyle = 'rgba(143,182,255,.25)'; x.beginPath(); x.ellipse(cx, py + 26, 220, 46, 0, 0, 7); x.fill();
+    x.fillStyle = 'rgba(143,182,255,.45)'; x.beginPath(); x.ellipse(cx, py, 220, 46, 0, 0, 7); x.fill();
+    x.strokeStyle = C.acc; x.lineWidth = 24; x.beginPath(); x.arc(cx, 450, 58, Math.PI, 0); x.stroke();
+    x.fillStyle = C.acc; x.beginPath(); x.roundRect(cx - 92, 450, 184, 140, 24); x.fill();
+    x.fillStyle = '#1d0f06'; x.beginPath(); x.arc(cx, 512, 18, 0, 7); x.fill(); x.fillRect(cx - 7, 516, 14, 40); },
+];
+function draw(n) { x.setTransform(1, 0, 0, 1, 0, 0); bg(); brand(); CARDS[n](); }
+window.draw = draw; window.count = CARDS.length;
+window.ready = Promise.all([document.fonts.ready, new Promise(r => mark.complete ? r() : mark.onload = r), document.fonts.load("300 100px 'Bricolage Grotesque'"), document.fonts.load("700 100px 'Bricolage Grotesque'"), document.fonts.load("600 40px 'IBM Plex Mono'"), document.fonts.load("500 40px 'IBM Plex Mono'")]);
+</script>
+</body></html>
