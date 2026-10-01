@@ -18,9 +18,9 @@ CA: [CA]
 ## Tweet (Spanish)
 $KRUV ya está en vivo 🚀
 
-Kruv es un launchpad donde cada moneda cotiza contra la acción detrás de su app: Instagram vs $META, YouTube vs $GOOGL.
+Kruv es un launchpad donde cada moneda cotiza contra la acción de su app: Instagram vs $META, YouTube vs $GOOGL.
 
-Cada compra mete la acción en la curva. Al agotarse, la liquidez se bloquea para siempre.
+Cada compra mete la acción en la curva. Al agotarse, la liquidez queda bloqueada para siempre.
 
 CA: [CA]
 
