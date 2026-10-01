@@ -21,6 +21,14 @@ python3 -m http.server 8000
 - Pairs, Unclaimed apps, Scoreboard (return vs. the paired stock), Watchlist, Two-legs calculator, Account, Treasury, Docs, Security
 - Find palette (`/`), currency switch (USD / EUR / GBP / JPY / stock shares), dark and light themes, scrolling ticker tape, MIT license modal
 
+## Live Solana tokens
+
+- **Default board tab:** "Live · Solana" shows real Solana memecoins trading right now, the same tokens that trend on GMGN.
+- **Source:** the [DexScreener public API](https://docs.dexscreener.com/api/reference): top boosted tokens, newest token profiles and pair data. Prices, market cap, liquidity, volume and buy/sell counts refresh every 15 seconds.
+- **Token page:** candles come from GeckoTerminal. Candles that disagree with DexScreener's price by more than 3x are dropped; if too many disagree, the chart falls back to the live price line. The page links to GMGN, DexScreener and Solscan, and offers paper trading against the live price with demo cash.
+- **Why not GMGN directly:** GMGN has no public API, so each token simply links to its GMGN page.
+- **Fallback:** when the browser can't reach the APIs (for example inside a sandboxed preview), the site loads `live-snapshot.json`, a real capture, and labels it as a snapshot. Refresh it with `python3 tools-snapshot.py`.
+
 ## Wallets
 
 - **EVM:** MetaMask, Phantom (EVM), Coinbase Wallet, Rabby, Brave and any wallet that announces itself through EIP-6963, with `window.ethereum` as a fallback.

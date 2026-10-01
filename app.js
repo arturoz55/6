@@ -53,7 +53,7 @@ const CCY = { USD: { r: 1, s: '$' }, EUR: { r: 0.92, s: '€' }, GBP: { r: 0.79,
 const KEY = 'sc.state.v2';
 let S = null;          // ledger: coins, stock feed, treasury
 let W = null;          // wallet: address, usd, bal {coinId: tokens}, kind
-let ui = { slip: store('sc.slip') || 0.01, ccy: store('sc.ccy') || 'USD', watch: store('sc.watch') || [], boardTab: store('sc.tab') || 'hot', boardQ: '' };
+let ui = { slip: store('sc.slip') || 0.01, ccy: store('sc.ccy') || 'USD', watch: store('sc.watch') || [], boardTab: store('sc.tab2') || 'live', boardQ: '' };
 if (!CCY[ui.ccy]) ui.ccy = 'USD';
 
 function freshLedger() {
@@ -742,9 +742,11 @@ function openFind() {
     const q = inp.value.trim().toLowerCase();
     const coins = Object.values(S.coins).filter(c => !q || (c.name + ' ' + c.sym + ' ' + c.app + ' ' + c.co).toLowerCase().includes(q)).sort((a, b) => vol24(b) - vol24(a)).slice(0, 8)
       .map(c => ({ go: '#/coin/' + c.id, html: `${logo(c, 'sm')}<span class="grow"><b>${esc(c.name)}</b> <span class="muted mono">${esc(c.sym)}</span><br><span class="micro">${esc(c.app)} · ${c.co}</span></span><span class="mono">${money(priceUsd(c), { co: c.co })}</span>` }));
+    const lv = liveSorted(liveAll()).filter(p => !q || (p.baseToken.name + ' ' + p.baseToken.symbol + ' ' + p.baseToken.address).toLowerCase().includes(q)).slice(0, q ? 8 : 5)
+      .map(p => ({ go: '#/live/' + p.baseToken.address, html: `${liveImg(p, 'sm')}<span class="grow"><b>${esc(p.baseToken.name)}</b> <span class="muted mono">${esc(p.baseToken.symbol)}</span><br><span class="micro">Solana · ${LIVE.source === 'live' ? 'live' : 'snapshot'} · MC ${usdC(lmc(p))}</span></span><span class="mono ${cls(lchg(p))}">${pct(lchg(p))}</span>` }));
     const cos = COMPANIES.filter(c => q && (c.sym + ' ' + c.name + ' ' + c.apps.join(' ')).toLowerCase().includes(q)).slice(0, 4)
       .map(c => ({ go: '#/pairs/' + c.sym, html: `${coLogo(c.sym)}<span class="grow"><b>${c.sym}</b> <span class="muted">${esc(c.name)}</span><br><span class="micro">${c.apps.length} apps</span></span><span class="pill">Company</span>` }));
-    rows = coins.concat(cos); sel = clamp(sel, 0, Math.max(0, rows.length - 1));
+    rows = lv.concat(coins, cos); sel = clamp(sel, 0, Math.max(0, rows.length - 1));
     $('#findList').innerHTML = rows.length ? rows.map((r, i) => `<div class="find-row ${i === sel ? 'on' : ''}" data-i="${i}">${r.html}</div>`).join('') : `<div class="empty" style="margin:8px">No match. <a class="btn ghost" href="#/launch" data-close>Launch it</a></div>`;
   };
   inp.oninput = () => { sel = 0; paint(); };
@@ -760,8 +762,8 @@ function openFind() {
 
 // ---------- tape ----------
 function renderTape() {
-  const items = COMPANIES.map(c => { const ch = stockChg(c.sym); return `<span class="tape-item"><b>${c.sym}</b>${money(S.stocks[c.sym].px)}<span class="${cls(ch)}">${pct(ch)}</span></span>`; })
-    .concat(Object.values(S.coins).sort((a, b) => vol24(b) - vol24(a)).slice(0, 8).map(c => { const ch = change24(c); return `<a class="tape-item" href="#/coin/${c.id}"><b>${esc(c.sym)}</b><span class="muted">/${c.co}</span><span class="${cls(ch)}">${pct(ch)}</span></a>`; }))
+  const items = liveSorted(liveAll()).slice(0, 10).map(p => { const ch = lchg(p); return `<a class="tape-item" href="#/live/${esc(p.baseToken.address)}"><b>${esc(p.baseToken.symbol)}</b>${money(lp(p))}<span class="${cls(ch)}">${pct(ch)}</span></a>`; }).concat(COMPANIES.map(c => { const ch = stockChg(c.sym); return `<span class="tape-item"><b>${c.sym}</b>${money(S.stocks[c.sym].px)}<span class="${cls(ch)}">${pct(ch)}</span></span>`; })
+    .concat(Object.values(S.coins).sort((a, b) => vol24(b) - vol24(a)).slice(0, 8).map(c => { const ch = change24(c); return `<a class="tape-item" href="#/coin/${c.id}"><b>${esc(c.sym)}</b><span class="muted">/${c.co}</span><span class="${cls(ch)}">${pct(ch)}</span></a>`; })))
     .join('');
   $('#tapeTrack').innerHTML = items + items;
 }
@@ -783,7 +785,7 @@ function spark(canvas, c) {
   const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, col + '33'); g.addColorStop(1, col + '00'); x.fillStyle = g; x.fill();
   x.beginPath(); x.arc(X(pts.length - 1), Y(pts[pts.length - 1]), 2.6, 0, 7); x.fillStyle = col; x.fill();
 }
-function drawSparks() { $$('canvas[data-spark]').forEach(cv => { const c = S.coins[cv.dataset.spark]; if (c) spark(cv, c); }); }
+function drawSparks() { $$('canvas[data-spark]').forEach(cv => { const c = S.coins[cv.dataset.spark]; if (c) spark(cv, c); }); $$('canvas[data-lspark]').forEach(cv => { const p = LIVE.pairs.get(cv.dataset.lspark); if (p) drawSparkTP(cv, livePts(p)); }); }
 
 // ---------- cards ----------
 function card(c) {
@@ -797,22 +799,286 @@ function card(c) {
   </article>`;
 }
 
+// ---------- live Solana tokens (DexScreener public API, GeckoTerminal candles) ----------
+// These are real tokens trading right now. Prices refresh every 15 s. When the page can't reach
+// the APIs (for example inside a sandboxed preview) it falls back to live-snapshot.json, a real
+// capture shipped next to the page, and says so on screen.
+const DS = 'https://api.dexscreener.com';
+const GT = 'https://api.geckoterminal.com/api/v2/networks/solana';
+const LIVE = { pairs: new Map(), boosted: [], fresh: [], hist: {}, updated: 0, source: 'none', at: 0, listAt: 0, busy: false, sort: store('sc.liveSort') || 'trending', snapImgs: {} };
+async function getJSON(url, ms = 12000) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } finally { clearTimeout(t); }
+}
+function absorbPairs(list, at) {
+  const best = {};
+  (list || []).forEach(p => { if (!p || !p.baseToken || p.chainId !== 'solana') return; const a = p.baseToken.address; if (!best[a] || (p.liquidity && p.liquidity.usd || 0) > (best[a].liquidity && best[a].liquidity.usd || 0)) best[a] = p; });
+  Object.values(best).forEach(p => {
+    const a = p.baseToken.address, prev = LIVE.pairs.get(a);
+    p._prev = prev ? +prev.priceUsd : null;
+    LIVE.pairs.set(a, p);
+    const h = LIVE.hist[a] = LIVE.hist[a] || [];
+    const px = +p.priceUsd; if (px > 0 && (!h.length || h[h.length - 1].p !== px)) { h.push({ t: at, p: px }); if (h.length > 240) h.shift(); }
+  });
+}
+async function liveList() {
+  const [boosts, profiles] = await Promise.all([getJSON(DS + '/token-boosts/top/v1'), getJSON(DS + '/token-profiles/latest/v1').catch(() => [])]);
+  const sol = x => x && x.chainId === 'solana' && x.tokenAddress;
+  LIVE.boosted = [...new Set(boosts.filter(sol).map(x => x.tokenAddress))].slice(0, 30);
+  LIVE.fresh = [...new Set(profiles.filter(sol).map(x => x.tokenAddress))].filter(a => !LIVE.boosted.includes(a)).slice(0, 30);
+  LIVE.listAt = now();
+}
+async function liveRefresh(force) {
+  if (LIVE.busy || (document.hidden && !force)) return;
+  LIVE.busy = true;
+  try {
+    if (!LIVE.boosted.length || now() - LIVE.listAt > 90e3) await liveList();
+    const extra = [...ui.watch, ...Object.keys((W && W.paper) || {})].filter(id => id.startsWith('live:')).map(id => id.slice(5));
+    const route = routeParts(); if (route[0] === 'live' && route[1]) extra.push(route[1]);
+    const addrs = [...new Set([...LIVE.boosted, ...LIVE.fresh, ...extra])];
+    const chunks = []; for (let i = 0; i < addrs.length; i += 30) chunks.push(addrs.slice(i, i + 30));
+    const res = await Promise.all(chunks.map(c => getJSON(`${DS}/tokens/v1/solana/${c.join(',')}`)));
+    absorbPairs(res.flat(), now());
+    LIVE.updated = now(); LIVE.source = 'live';
+  } catch (e) {
+    if (LIVE.source !== 'live' && LIVE.source !== 'snapshot') await liveSnapshot();
+  } finally { LIVE.busy = false; livePaint(); }
+}
+async function liveSnapshot() {
+  try {
+    const s = await getJSON('live-snapshot.json', 8000);
+    LIVE.boosted = s.boosted || []; LIVE.fresh = s.fresh || []; LIVE.snapImgs = s.images || {};
+    absorbPairs(s.pairs, s.at); LIVE.at = s.at; LIVE.updated = s.at; LIVE.source = 'snapshot';
+  } catch (e) { LIVE.source = 'down'; }
+}
+function liveAll() { return [...LIVE.pairs.values()]; }
+const lp = p => +p.priceUsd || 0;
+const lchg = (p, k = 'h24') => (p.priceChange && p.priceChange[k] != null ? p.priceChange[k] / 100 : 0);
+const lvol = (p, k = 'h24') => (p.volume && p.volume[k]) || 0;
+const ltx = (p, k = 'h24') => (p.txns && p.txns[k]) || { buys: 0, sells: 0 };
+const lmc = p => p.marketCap || p.fdv || 0;
+const lliq = p => (p.liquidity && p.liquidity.usd) || 0;
+function liveSorted(list) {
+  const s = LIVE.sort, b = LIVE.boosted;
+  if (s === 'trending') return list.filter(p => b.includes(p.baseToken.address)).sort((x, y) => b.indexOf(x.baseToken.address) - b.indexOf(y.baseToken.address)).concat(list.filter(p => !b.includes(p.baseToken.address)).sort((x, y) => lvol(y) - lvol(x)));
+  if (s === 'gainers') return list.slice().sort((x, y) => lchg(y) - lchg(x));
+  if (s === 'volume') return list.slice().sort((x, y) => lvol(y) - lvol(x));
+  if (s === 'new') return list.slice().sort((x, y) => (y.pairCreatedAt || 0) - (x.pairCreatedAt || 0));
+  if (s === 'liquidity') return list.slice().sort((x, y) => lliq(y) - lliq(x));
+  return list;
+}
+function liveImg(p, size = '') {
+  const a = p.baseToken.address, src = LIVE.source === 'snapshot' ? LIVE.snapImgs[a] : (p.info && p.info.imageUrl);
+  const sym = (p.baseToken.symbol || '?').slice(0, 2).toUpperCase();
+  const hue = hashStr(a) % 360;
+  // initials sit underneath; the token's own image covers them once it loads and removes itself if it fails
+  return `<span class="logo ${size}" style="background:linear-gradient(135deg,hsl(${hue} 70% 55%),hsl(${(hue + 40) % 360} 65% 35%))">${esc(sym)}${src ? `<img class="tok-img" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
+}
+function livePts(p) {
+  const n = LIVE.updated || now(), px = lp(p); if (!px) return [];
+  const pts = [['h24', 864e5], ['h6', 216e5], ['h1', 36e5], ['m5', 3e5]].map(([k, ms]) => ({ t: n - ms, p: px / (1 + lchg(p, k)) })).filter(x => isFinite(x.p) && x.p > 0);
+  return pts.concat((LIVE.hist[p.baseToken.address] || []).filter(x => x.t > n - 864e5)).sort((a, b) => a.t - b.t);
+}
+function drawSparkTP(canvas, pts) {
+  if (!canvas || pts.length < 2) return;
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth || 240, h = canvas.clientHeight || 46;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const x = canvas.getContext('2d'); x.scale(dpr, dpr);
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1, ps = pts.map(q => q.p), mn = Math.min(...ps), mx = Math.max(...ps), rg = mx - mn || mx * .01 || 1;
+  const up = ps[ps.length - 1] >= ps[0];
+  const col = getComputedStyle(document.documentElement).getPropertyValue(up ? '--up' : '--down').trim();
+  const X = t => 2 + ((t - t0) / (t1 - t0 || 1)) * (w - 4), Y = v => h - 4 - ((v - mn) / rg) * (h - 8);
+  x.beginPath(); pts.forEach((q, i) => i ? x.lineTo(X(q.t), Y(q.p)) : x.moveTo(X(q.t), Y(q.p)));
+  x.strokeStyle = col; x.lineWidth = 1.6; x.lineJoin = 'round'; x.stroke();
+  x.lineTo(X(t1), h); x.lineTo(X(t0), h); x.closePath();
+  const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, col + '33'); g.addColorStop(1, col + '00'); x.fillStyle = g; x.fill();
+  x.beginPath(); x.arc(X(t1), Y(ps[ps.length - 1]), 2.6, 0, 7); x.fillStyle = col; x.fill();
+}
+const usdC = v => money(v, { compact: 1 });
+function liveCard(p) {
+  const a = p.baseToken.address, ch = lchg(p), tx = ltx(p), tot = tx.buys + tx.sells || 1;
+  const boosted = LIVE.boosted.includes(a);
+  return `<article class="card live-card" data-go="#/live/${esc(a)}" data-live="${esc(a)}" tabindex="0" role="link" aria-label="${esc(p.baseToken.name)}">
+    <div class="row">${liveImg(p)}<div class="nm"><h3>${esc(p.baseToken.name)}</h3><div class="micro mono">${esc(p.baseToken.symbol)} · ${esc(p.dexId)}${boosted ? ' · <span class="hot">trending</span>' : ''}</div></div>${starBtn('live:' + a)}</div>
+    <div class="row" style="justify-content:space-between"><span class="pairtag">${esc(p.baseToken.symbol)} / ${esc(p.quoteToken.symbol)}</span><div class="px"><div class="p" data-px>${money(lp(p))}</div><div class="micro mono ${cls(ch)}" data-ch>${pct(ch)}</div></div></div>
+    <canvas data-lspark="${esc(a)}" aria-hidden="true"></canvas>
+    <div class="lstats"><span><i>MC</i>${usdC(lmc(p))}</span><span><i>Liq</i>${usdC(lliq(p))}</span><span><i>Vol</i>${usdC(lvol(p))}</span><span><i>Age</i>${p.pairCreatedAt ? ago(p.pairCreatedAt) : '—'}</span></div>
+    <div><div class="bsbar" title="24h buys vs sells"><i style="width:${(tx.buys / tot * 100).toFixed(1)}%"></i></div><div class="foot" style="margin-top:7px"><span class="up">${compact(tx.buys).replace('.00', '')} buys</span><span class="down">${compact(tx.sells).replace('.00', '')} sells</span></div></div>
+  </article>`;
+}
+function liveStatus() {
+  if (LIVE.source === 'live') return `<span class="live-dot"></span>Live from DexScreener · updated <b data-upd>${ago(LIVE.updated)}</b> ago`;
+  if (LIVE.source === 'snapshot') return `<span class="snap-dot"></span>Real snapshot from ${new Date(LIVE.at).toLocaleString()} · this preview can't reach live APIs. Host the site on its own domain for prices that update every 15 s.`;
+  if (LIVE.source === 'down') return `Live data didn't load. Check your connection and try again. <button class="btn ghost" type="button" data-live-retry>Retry</button>`;
+  return `<span class="live-dot"></span>Loading live Solana tokens…`;
+}
+function liveBoard(box) {
+  const q = ui.boardQ.toLowerCase();
+  const list = liveSorted(liveAll().filter(p => !q || (p.baseToken.name + ' ' + p.baseToken.symbol + ' ' + p.baseToken.address).toLowerCase().includes(q)));
+  box.innerHTML = `<div class="live-head" style="grid-column:1/-1"><div class="seg" id="liveSort">${[['trending', 'Trending'], ['gainers', '24h gainers'], ['volume', 'Volume'], ['new', 'New pairs'], ['liquidity', 'Liquidity']].map(([k, l]) => `<button type="button" data-s="${k}" class="${LIVE.sort === k ? 'on' : ''}">${l}</button>`).join('')}</div><span class="micro live-status" id="liveStatus">${liveStatus()}</span></div>
+    ${list.length ? list.map(liveCard).join('') : LIVE.source === 'none' ? Array.from({ length: 8 }, () => '<div class="card skel"></div>').join('') : `<div class="empty" style="grid-column:1/-1">No live token matches “${esc(ui.boardQ)}”.</div>`}`;
+  $$('canvas[data-lspark]', box).forEach(cv => { const p = LIVE.pairs.get(cv.dataset.lspark); if (p) drawSparkTP(cv, livePts(p)); });
+  $('#liveSort').onclick = e => { const b = e.target.closest('button'); if (!b) return; LIVE.sort = b.dataset.s; store('sc.liveSort', LIVE.sort); liveBoard(box); };
+}
+// repaint whatever live content is on screen, in place where possible
+function livePaint() {
+  const st = $('#liveStatus'); if (st) st.innerHTML = liveStatus();
+  const board = $('#board');
+  if (board && ui.boardTab === 'live') {
+    const cards = $$('.live-card', board);
+    if (!cards.length || cards.length !== Math.min(liveAll().length, cards.length) || $('.skel', board)) liveBoard(board);
+    else cards.forEach(el => {
+      const p = LIVE.pairs.get(el.dataset.live); if (!p) return;
+      const ch = lchg(p), px = lp(p);
+      el.querySelector('[data-px]').textContent = money(px);
+      const c = el.querySelector('[data-ch]'); c.textContent = pct(ch); c.className = 'micro mono ' + cls(ch);
+      if (p._prev && p._prev !== px) { el.classList.remove('flash-up', 'flash-down'); void el.offsetWidth; el.classList.add(px > p._prev ? 'flash-up' : 'flash-down'); }
+      drawSparkTP(el.querySelector('canvas'), livePts(p));
+    });
+  }
+  if (routeParts()[0] === 'live') liveRefreshPage();
+  if (routeParts()[0] === 'watch' && $('#liveWatch')) $('#liveWatch').innerHTML = liveWatchHtml();
+  renderTape();
+}
+setInterval(() => { const u = $('[data-upd]'); if (u && LIVE.updated) u.textContent = ago(LIVE.updated); }, 1000);
+document.addEventListener('click', e => { if (e.target.closest('[data-live-retry]')) { LIVE.source = 'none'; livePaint(); liveRefresh(true); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && now() - LIVE.updated > 15e3) liveRefresh(); });
+
+// ---------- one live token ----------
+let liveChart = null, liveSeries = null, liveVol = null, liveTf = store('sc.liveTf') || '5m', liveCandlesAt = 0;
+const TF = { '1m': ['minute', 1], '5m': ['minute', 5], '15m': ['minute', 15], '1h': ['hour', 1] };
+function liveTokenPage(v, addr) {
+  const p = LIVE.pairs.get(addr);
+  if (!p) {
+    v.innerHTML = `<div class="empty">${LIVE.source === 'none' || LIVE.busy ? '<span class="live-dot"></span>Loading token…' : `<h2>Token not found</h2><p class="mono" style="word-break:break-all">${esc(addr)}</p><a class="btn ghost" href="https://gmgn.ai/sol/token/${esc(addr)}" target="_blank" rel="noopener noreferrer">Look it up on GMGN ↗</a>`}<a class="btn primary" href="#/">Back to the board</a></div>`;
+    if (LIVE.source !== 'snapshot') liveRefresh(true);
+    return;
+  }
+  const sym = esc(p.baseToken.symbol), links = [];
+  links.push(`<a class="btn primary" href="https://gmgn.ai/sol/token/${esc(addr)}" target="_blank" rel="noopener noreferrer">Trade on GMGN ↗</a>`);
+  links.push(`<a class="btn ghost" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">DexScreener ↗</a>`);
+  links.push(`<a class="btn ghost" href="https://solscan.io/token/${esc(addr)}" target="_blank" rel="noopener noreferrer">Solscan ↗</a>`);
+  ((p.info && p.info.websites) || []).slice(0, 2).forEach(w => /^https:\/\//.test(w.url) && links.push(`<a class="btn ghost" href="${esc(w.url)}" target="_blank" rel="noopener noreferrer">${esc(w.label || 'Website')} ↗</a>`));
+  ((p.info && p.info.socials) || []).slice(0, 3).forEach(s => /^https:\/\//.test(s.url) && links.push(`<a class="btn ghost" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.type === 'twitter' ? 'X' : s.type)} ↗</a>`));
+  v.innerHTML = `<div class="coin-top">${liveImg(p, 'lg')}<div class="t"><div class="tags"><span class="pairtag">${sym} / ${esc(p.quoteToken.symbol)}</span><span class="pill">${esc(p.dexId)}</span><span class="pill">Solana</span>${LIVE.boosted.includes(addr) ? '<span class="pill grad">Trending</span>' : ''}<span class="pill" id="lvSrc">${LIVE.source === 'live' ? 'live' : 'snapshot'}</span></div><h1 style="font-size:clamp(28px,4vw,40px)">${esc(p.baseToken.name)}</h1>
+      <button class="addr-chip mono" id="lvCopy" type="button" title="Copy token address">${esc(short(addr))} <span aria-hidden="true">⧉</span></button></div>
+    <div class="price"><div class="p" id="lvPx">${money(lp(p))}</div><div class="mono micro" id="lvCh"></div></div>${starBtn('live:' + addr)}</div>
+  <div class="coin-grid"><div>
+    <div class="panel"><div class="tf"><div class="seg" id="lvTf">${Object.keys(TF).map(k => `<button type="button" data-tf="${k}" class="${liveTf === k ? 'on' : ''}">${k}</button>`).join('')}</div><span class="micro mono" id="lvChartSrc">loading chart…</span></div><div class="chart-box" id="lvChart"></div></div>
+    <div class="panel"><h3 style="margin-bottom:10px">Activity</h3><div class="tbl-wrap" style="border:0;background:none"><table><thead><tr><th></th><th class="r">Change</th><th class="r">Volume</th><th class="r">Buys</th><th class="r">Sells</th><th>Pressure</th></tr></thead><tbody id="lvAct"></tbody></table></div></div>
+  </div><div>
+    <div class="panel trade"><div class="eyebrow" style="margin-bottom:10px">Paper trade at the live price</div>
+      <div class="seg" id="lvSide"><button class="on buy" data-side="buy" type="button">Buy</button><button class="sell" data-side="sell" type="button">Sell</button></div>
+      <div class="field"><label for="lvAmt"><span id="lvLbl">You pay</span><span id="lvBal" class="mono"></span></label><div class="inp"><input id="lvAmt" inputmode="decimal" placeholder="0.00" autocomplete="off"><span id="lvUnit">USD</span></div><div class="quick" id="lvQuick"></div></div>
+      <div class="quote" id="lvQuote"></div><div class="err" id="lvErr"></div>
+      <button class="btn primary big" id="lvGo" type="button" style="width:100%">Paper buy ${sym}</button>
+      <p class="hint" style="margin-top:10px">Uses your demo cash so you can practise against real prices. Real orders go through GMGN or another Solana DEX.</p></div>
+    <div class="panel"><div class="eyebrow" style="margin-bottom:8px">Token</div><div id="lvStats"></div><div class="bar" style="margin:12px 0 0;flex-wrap:wrap">${links.join('')}</div></div>
+  </div></div>`;
+  $('#lvCopy').onclick = () => copyText(addr, 'Token address copied');
+  $('#lvTf').onclick = e => { const b = e.target.closest('button'); if (!b) return; liveTf = b.dataset.tf; store('sc.liveTf', liveTf); $$('#lvTf button').forEach(x => x.classList.toggle('on', x === b)); liveCandles(addr, true); };
+  let side = 'buy';
+  const amt = $('#lvAmt');
+  const pos = () => (W && W.paper && W.paper['live:' + addr]) || { qty: 0, cost: 0 };
+  const paint = () => {
+    const P = LIVE.pairs.get(addr); if (!P) return; const px = lp(P), n = parseFloat(amt.value) || 0, ps = pos();
+    $('#lvBal').textContent = W ? (side === 'buy' ? 'Cash ' + money(W.usd) : 'Holding ' + tok(ps.qty)) : '';
+    if (!$('#lvQuick').dataset.side || $('#lvQuick').dataset.side !== side) { $('#lvQuick').dataset.side = side; $('#lvQuick').innerHTML = side === 'buy' ? [25, 100, 500, 1000].map(x => `<button type="button" data-v="${x}">$${x}</button>`).join('') : [[.25, '25%'], [.5, '50%'], [1, 'Max']].map(([x, l]) => `<button type="button" data-v="${x}">${l}</button>`).join(''); }
+    const btn = $('#lvGo'); btn.textContent = W ? (side === 'buy' ? 'Paper buy ' : 'Paper sell ') + P.baseToken.symbol : 'Connect to paper trade'; btn.disabled = W ? !(n > 0) : false;
+    const err = $('#lvErr'); err.textContent = '';
+    if (W && n > 0 && (side === 'buy' ? n > W.usd + 1e-9 : n > ps.qty + 1e-9)) { err.textContent = side === 'buy' ? `You have ${money(W.usd)} of demo cash.` : `You hold ${tok(ps.qty)} ${P.baseToken.symbol}.`; btn.disabled = true; }
+    const fee = .005, val = ps.qty * px, pnl = val - ps.cost;
+    $('#lvQuote').innerHTML = (n > 0 ? (side === 'buy' ? `<div class="kv"><span>You get</span><span><b>${tok(n * (1 - fee) / px)} ${esc(P.baseToken.symbol)}</b></span></div>` : `<div class="kv"><span>You get</span><span><b>${money(n * px * (1 - fee))}</b></span></div>`) + `<div class="kv"><span>Sim fee</span><span>0.5%</span></div>` : `<div class="kv"><span>${LIVE.source === 'live' ? 'Live price' : 'Snapshot price'}</span><span>${money(px)}</span></div>`)
+      + (ps.qty > 0 ? `<div class="kv"><span>Your position</span><span>${tok(ps.qty)} · ${money(val)}</span></div><div class="kv"><span>P&amp;L</span><span class="${cls(pnl)}">${money(pnl)} (${pct(ps.cost ? pnl / ps.cost : 0)})</span></div>` : '');
+  };
+  liveTradePaint = paint;
+  $('#lvSide').onclick = e => { const b = e.target.closest('button'); if (!b) return; side = b.dataset.side; $$('#lvSide button').forEach(x => x.classList.toggle('on', x === b)); $('#lvUnit').textContent = side === 'buy' ? 'USD' : p.baseToken.symbol; $('#lvLbl').textContent = side === 'buy' ? 'You pay' : 'You sell'; amt.value = ''; paint(); };
+  $('#lvQuick').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (!W) return openConnect(); if (side === 'buy') amt.value = b.dataset.v; else { const q = pos().qty; if (!q) { $('#lvErr').textContent = `You hold no ${p.baseToken.symbol} yet.`; return; } amt.value = +b.dataset.v === 1 ? String(q) : String(q * +b.dataset.v); } paint(); };
+  amt.oninput = paint; amt.onkeydown = e => { if (e.key === 'Enter') $('#lvGo').click(); };
+  $('#lvGo').onclick = () => {
+    if (!W) return openConnect(() => { location.hash = '#/live/' + addr; });
+    const P = LIVE.pairs.get(addr), px = lp(P), n = parseFloat(amt.value) || 0; if (!(n > 0) || !px) return;
+    W.paper = W.paper || {}; const k = 'live:' + addr; const ps = W.paper[k] || { qty: 0, cost: 0, sym: P.baseToken.symbol, name: P.baseToken.name };
+    if (side === 'buy') { if (n > W.usd + 1e-9) return; const q = n * .995 / px; ps.qty += q; ps.cost += n; W.usd -= n; toast(`Paper bought ${tok(q)} ${P.baseToken.symbol}`); }
+    else { if (n > ps.qty + 1e-9) return; const out = n * px * .995; ps.cost *= 1 - n / ps.qty; ps.qty -= n; W.usd += out; toast(`Paper sold for ${money(out)}`); }
+    if (ps.qty < 1e-9) delete W.paper[k]; else W.paper[k] = ps;
+    save(); amt.value = ''; paint();
+  };
+  paint(); liveRefreshPage(); liveCandles(addr, true);
+}
+let liveTradePaint = null;
+function liveRefreshPage() {
+  const addr = routeParts()[1], p = LIVE.pairs.get(addr); if (!p || !$('#lvPx')) { if (p && !$('#lvPx') && routeParts()[0] === 'live') render(); return; }
+  const ch = lchg(p);
+  $('#lvPx').textContent = money(lp(p)); $('#lvCh').innerHTML = `<span class="${cls(ch)}">${pct(ch)}</span> 24h`;
+  $('#lvSrc').textContent = LIVE.source === 'live' ? 'live · ' + ago(LIVE.updated) : 'snapshot';
+  $('#lvAct').innerHTML = [['m5', '5m'], ['h1', '1h'], ['h6', '6h'], ['h24', '24h']].map(([k, l]) => { const c = lchg(p, k), t = ltx(p, k), s = t.buys + t.sells || 1; return `<tr><td class="mono muted">${l}</td><td class="r mono ${cls(c)}">${pct(c)}</td><td class="r mono">${usdC(lvol(p, k))}</td><td class="r mono up">${t.buys.toLocaleString()}</td><td class="r mono down">${t.sells.toLocaleString()}</td><td style="min-width:90px"><div class="bsbar"><i style="width:${(t.buys / s * 100).toFixed(1)}%"></i></div></td></tr>`; }).join('');
+  $('#lvStats').innerHTML = `<div class="kv"><span>Market cap</span><span>${usdC(lmc(p))}</span></div><div class="kv"><span>FDV</span><span>${usdC(p.fdv || 0)}</span></div><div class="kv"><span>Liquidity</span><span>${usdC(lliq(p))}${p.liquidity && p.liquidity.quote ? ' · ' + fmtTiny(p.liquidity.quote) + ' ' + esc(p.quoteToken.symbol) : ''}</span></div><div class="kv"><span>Price in ${esc(p.quoteToken.symbol)}</span><span>${fmtTiny(+p.priceNative)}</span></div><div class="kv"><span>Pair created</span><span>${p.pairCreatedAt ? ago(p.pairCreatedAt) + ' ago' : '—'}</span></div><div class="kv"><span>Token</span><span class="mono">${esc(short(p.baseToken.address))}</span></div>`;
+  if (liveTradePaint) liveTradePaint();
+  if (liveSeries && LIVE.source === 'live' && now() - liveCandlesAt > 60e3) liveCandles(addr);
+  else if (liveSeries && liveSeries._line) liveLineFallback(p);
+}
+async function liveCandles(addr, reset) {
+  const box = $('#lvChart'); if (!box) return;
+  const p = LIVE.pairs.get(addr); if (!p) return;
+  if (reset || !liveChart) { destroyLiveChart(); if (!window.LightweightCharts) { box.innerHTML = `<canvas style="width:100%;height:100%" id="lvSpark"></canvas>`; drawSparkTP($('#lvSpark'), livePts(p)); if ($('#lvChartSrc')) $('#lvChartSrc').textContent = 'price line (chart library unavailable)'; return; } const col = chartColors();
+    liveChart = LightweightCharts.createChart(box, { autoSize: true, layout: { background: { type: 'solid', color: 'transparent' }, textColor: col.ink, fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }, grid: { vertLines: { color: col.rule }, horzLines: { color: col.rule } }, rightPriceScale: { borderColor: col.rule }, timeScale: { borderColor: col.rule, timeVisible: true, secondsVisible: false }, localization: { locale: 'en-US' } });
+    liveVol = liveChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'v' }); liveChart.priceScale('v').applyOptions({ scaleMargins: { top: .82, bottom: 0 } }); }
+  liveCandlesAt = now();
+  try {
+    if (LIVE.source !== 'live') throw new Error('offline');
+    const [unit, agg] = TF[liveTf];
+    const d = await getJSON(`${GT}/pools/${encodeURIComponent(p.pairAddress)}/ohlcv/${unit}?aggregate=${agg}&limit=240&currency=usd`);
+    const raw = ((d.data && d.data.attributes && d.data.attributes.ohlcv_list) || []).slice().reverse();
+    const rows = cleanCandles(raw, livePts(p));
+    if (rows.length < Math.min(12, raw.length * .3)) throw new Error('inconsistent');
+    if (!liveChart) return;
+    if (!liveSeries || liveSeries._line) { if (liveSeries) liveChart.removeSeries(liveSeries); const col = chartColors(); liveSeries = liveChart.addCandlestickSeries({ upColor: col.up, downColor: col.down, borderVisible: false, wickUpColor: col.up, wickDownColor: col.down, priceFormat: { type: 'custom', formatter: v => fmtTiny(v), minMove: 1e-12 } }); liveSeries.priceScale().applyOptions({ scaleMargins: { top: .08, bottom: .22 } }); }
+    liveSeries.setData(rows.map(r => ({ time: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4] })));
+    liveVol.setData(rows.map(r => ({ time: r[0], value: +r[5], color: (+r[4] >= +r[1] ? chartColors().up : chartColors().down) + '66' })));
+    if (reset) liveChart.timeScale().fitContent();
+    if ($('#lvChartSrc')) $('#lvChartSrc').textContent = 'candles from GeckoTerminal';
+  } catch (e) { liveLineFallback(p, e); }
+}
+// GeckoTerminal sometimes mixes in prices that are far off the real market (dust trades, or a second
+// price regime for the same pool). DexScreener's price history is the reference: a candle survives only
+// if it sits within 3x of where DexScreener says the price was at that moment.
+function cleanCandles(rows, ref) {
+  const at = t => { if (!ref.length) return 0; if (t <= ref[0].t) return ref[0].p; for (let i = 1; i < ref.length; i++) if (t <= ref[i].t) { const a = ref[i - 1], b = ref[i], k = (t - a.t) / (b.t - a.t || 1); return Math.exp(Math.log(a.p) + k * (Math.log(b.p) - Math.log(a.p))); } return ref[ref.length - 1].p; };
+  const ok = (v, m) => v > 0 && m > 0 && v / m < 3 && m / v < 3;
+  return rows.filter(r => { const m = at(r[0] * 1000); return ok(+r[4], m) && ok(+r[1], m); })
+    .map(r => { const hi = Math.max(+r[1], +r[4]), lo = Math.min(+r[1], +r[4]); return [r[0], +r[1], Math.min(+r[2], hi * 1.2), Math.max(+r[3], lo / 1.2), +r[4], +r[5]]; });
+}
+function liveLineFallback(p, e) {
+  if (!liveChart) return;
+  if (!liveSeries || !liveSeries._line) { if (liveSeries) liveChart.removeSeries(liveSeries); const col = chartColors(); liveSeries = liveChart.addAreaSeries({ lineColor: col.up, topColor: col.up + '44', bottomColor: col.up + '00', lineWidth: 2, priceFormat: { type: 'custom', formatter: v => fmtTiny(v), minMove: 1e-12 } }); liveSeries._line = true; liveVol.setData([]); }
+  const seen = new Set(); const data = livePts(p).map(q => ({ time: Math.floor(q.t / 1000), value: q.p })).filter(q => !seen.has(q.time) && seen.add(q.time));
+  liveSeries.setData(data); liveChart.timeScale().fitContent();
+  if ($('#lvChartSrc')) $('#lvChartSrc').textContent = e && /429/.test(e.message) ? 'candle API busy, showing live price line' : e && e.message === 'inconsistent' ? 'candle data disagrees with the live price, showing the price line' : LIVE.source === 'live' ? 'price line from live updates' : 'price line from snapshot data';
+}
+function destroyLiveChart() { if (liveChart) { liveChart.remove(); liveChart = null; liveSeries = null; liveVol = null; } }
+function liveWatchHtml() {
+  const list = ui.watch.filter(id => id.startsWith('live:')).map(id => LIVE.pairs.get(id.slice(5))).filter(Boolean);
+  return list.length ? list.map(liveCard).join('') : '';
+}
+
 // ---------- routing ----------
 function routeParts() { return (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean).map(decodeURIComponent); }
 let chart = null, chartSeries = null, volSeries = null, chartCoin = null, chartTf = store('sc.tf') || 300;
 function render() {
   destroyChart();
+  destroyLiveChart(); liveTradePaint = null;
   coinPaint = null; lowTab = 'trades';
   const [p, a] = routeParts();
   renderNav();
   const view = $('#view');
-  const pages = { '': home, pairs, unclaimed, beat, watch, legs, launch, account, treasury, docs, security, coin };
+  const pages = { '': home, pairs, unclaimed, beat, watch, legs, launch, account, treasury, docs, security, coin, live: liveTokenPage };
   const fn = pages[p || ''];
   view.innerHTML = '';
   if (!fn) { view.innerHTML = `<div class="empty"><h2>Nothing here</h2><p>That page does not exist.</p><a class="btn primary" href="#/">Back to the board</a></div>`; return; }
   fn(view, a);
   drawSparks();
-  document.title = 'Sharecurve' + (p ? ' · ' + (p === 'coin' && S.coins[a] ? S.coins[a].sym : (NAV.find(n => n[0] === p) || [0, TITLES[p] || p])[1]) : '');
+  document.title = 'Sharecurve' + (p ? ' · ' + (p === 'coin' && S.coins[a] ? S.coins[a].sym : p === 'live' && LIVE.pairs.get(a) ? LIVE.pairs.get(a).baseToken.symbol : (NAV.find(n => n[0] === p) || [0, TITLES[p] || p])[1]) : '');
 }
 window.addEventListener('hashchange', () => { closeModal(); window.scrollTo(0, 0); render(); });
 
@@ -840,8 +1106,8 @@ function home(v) {
     <div class="stat"><div class="eyebrow">Graduated</div><div class="v" data-count="${grads}">${grads}</div></div>
   </div>
   <div class="feed" id="feed" aria-label="Latest trades"></div>
-  <div class="bar"><div class="seg" role="tablist" id="boardTabs">${[['hot', 'Hot'], ['new', 'New'], ['near', 'Near graduation'], ['grad', 'Graduated'], ['beat', 'Beating stock']].map(([k2, l]) => `<button role="tab" data-t="${k2}" class="${ui.boardTab === k2 ? 'on' : ''}">${l}</button>`).join('')}</div>
-  <input class="search" id="boardQ" placeholder="Filter by name, app or ticker" value="${esc(ui.boardQ)}" aria-label="Filter coins"></div>
+  <div class="bar"><div class="seg" role="tablist" id="boardTabs">${[['live', 'Live · Solana'], ['hot', 'Hot'], ['new', 'New'], ['near', 'Near graduation'], ['grad', 'Graduated'], ['beat', 'Beating stock']].map(([k2, l]) => `<button role="tab" data-t="${k2}" class="${ui.boardTab === k2 ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <input class="search" id="boardQ" placeholder="Filter by name, ticker or address" value="${esc(ui.boardQ)}" aria-label="Filter coins"></div>
   <div class="grid" id="board"></div>`;
   countUp(v);
   cyclePair();
@@ -849,6 +1115,7 @@ function home(v) {
   const recent = coins.flatMap(c => c.trades.slice(-3).map(t => ({ c, t }))).sort((a, b) => b.t.t - a.t.t).slice(0, 14);
   $('#feed').innerHTML = recent.map(x => feedItem(x.c, x.t)).join('');
   const paint = () => {
+    if (ui.boardTab === 'live') return liveBoard($('#board'));
     const q = ui.boardQ.toLowerCase();
     let list = coins.filter(c => !q || (c.name + ' ' + c.sym + ' ' + c.app + ' ' + c.co).toLowerCase().includes(q));
     const t = ui.boardTab;
@@ -860,7 +1127,7 @@ function home(v) {
     $('#board').innerHTML = list.length ? list.map(card).join('') : `<div class="empty" style="grid-column:1/-1">${t === 'grad' ? 'No coin has filled its curve yet. The closest ones are under Near graduation.' : 'No coins match.'} <a class="btn primary" href="#/launch">Launch one</a></div>`;
     drawSparks();
   };
-  $('#boardTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; ui.boardTab = b.dataset.t; store('sc.tab', ui.boardTab); $$('#boardTabs button').forEach(x => x.classList.toggle('on', x === b)); paint(); };
+  $('#boardTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; ui.boardTab = b.dataset.t; store('sc.tab2', ui.boardTab); $$('#boardTabs button').forEach(x => x.classList.toggle('on', x === b)); paint(); };
   $('#boardQ').oninput = e => { ui.boardQ = e.target.value; paint(); };
   paint();
 }
@@ -947,8 +1214,11 @@ function beat(v) {
 
 function watch(v) {
   const list = ui.watch.map(id => S.coins[id]).filter(Boolean);
-  v.innerHTML = `<div class="page-head"><span class="eyebrow">Watchlist</span><h1>Coins you are watching</h1><p>Star any coin to keep it here. The list lives in this browser only.</p></div>
-  ${list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty"><p>Nothing starred yet. Tap the star on any coin card.</p><a class="btn primary" href="#/">Browse the board</a></div>`}`;
+  const liveN = ui.watch.filter(id => id.startsWith('live:')).length;
+  v.innerHTML = `<div class="page-head"><span class="eyebrow">Watchlist</span><h1>Coins you are watching</h1><p>Star any coin, live or demo, to keep it here. The list lives in this browser only.</p></div>
+  ${liveN ? `<div class="shead"><h2>Live Solana tokens</h2><span class="micro">${liveN} starred</span></div><div class="grid" id="liveWatch">${liveWatchHtml() || '<div class="card skel"></div>'}</div>` : ''}
+  ${list.length ? `<div class="shead"><h2>Demo coins</h2></div><div class="grid">${list.map(card).join('')}</div>` : ''}
+  ${!list.length && !liveN ? `<div class="empty"><p>Nothing starred yet. Tap the star on any coin card.</p><a class="btn primary" href="#/">Browse the board</a></div>` : ''}`;
 }
 
 function legs(v) {
@@ -1046,17 +1316,19 @@ function account(v) {
   if (!W) { v.innerHTML = `<div class="page-head"><span class="eyebrow">Account</span><h1>Connect to see your coins</h1></div><div class="empty"><p>Your balances, positions and launches show up here.</p><button class="btn primary" id="accConn" type="button">Connect</button></div>`; $('#accConn').onclick = () => openConnect(); return; }
   const pos = Object.values(S.coins).filter(c => (c.holders[W.addr] || 0) > 0).map(c => { const b = c.holders[W.addr]; const val2 = sellValueUsd(c, b); return { c, b, val: val2 }; });
   const total = pos.reduce((s, p) => s + p.val, 0);
+  const paperVal = Object.entries(W.paper || {}).reduce((s2, [k, ps]) => { const lpair = LIVE.pairs.get(k.slice(5)); return s2 + (lpair ? ps.qty * lp(lpair) : 0); }, 0);
   const mine = (W.launched || []).map(id => S.coins[id]).filter(Boolean);
   v.innerHTML = `<div class="page-head"><span class="eyebrow">Account · ${esc(walletLabel(W))}${W.signed ? ' · signed in' : ''}</span><h1 class="mono" style="font-size:clamp(22px,4vw,34px);word-break:break-all">${esc(W.addr)}</h1></div>
   <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:26px">
     <div class="stat"><div class="eyebrow">Cash</div><div class="v">${money(W.usd)}</div></div>
     <div class="stat"><div class="eyebrow">Positions (if sold now)</div><div class="v">${money(total)}</div></div>
-    <div class="stat"><div class="eyebrow">Net vs start</div><div class="v ${cls(W.usd + total - START_USD)}">${money(W.usd + total - START_USD)}</div></div>
+    <div class="stat"><div class="eyebrow">Net vs start</div><div class="v ${cls(W.usd + total + paperVal - START_USD)}">${money(W.usd + total + paperVal - START_USD)}</div></div>
     ${W.kind === 'evm' ? `<div class="stat"><div class="eyebrow">On-chain · ${esc(chainName(W.chainId))}</div><div class="v">${fmtNative()}</div></div>` : ''}
   </div>
   <div class="bar" style="margin:-10px 0 24px">${W.kind !== 'demo' ? `<button class="btn primary" id="accSign" type="button">${W.signed ? 'Signed in · sign again' : 'Sign in with wallet'}</button>` : ''}<button class="btn ghost" id="accCopy" type="button">Copy address</button><button class="btn ghost" id="accDisc" type="button">Disconnect</button></div>
   <div class="shead"><h2>Positions</h2></div>
   ${pos.length ? `<div class="tbl-wrap"><table><thead><tr><th>Coin</th><th class="r">Balance</th><th class="r">Price</th><th class="r">Sell value</th></tr></thead><tbody>${pos.map(p => `<tr class="link" data-go="#/coin/${p.c.id}"><td><div class="cell-co">${logo(p.c, 'sm')}<b>${esc(p.c.sym)}</b><span class="micro">/ ${p.c.co}</span></div></td><td class="r mono">${tok(p.b)}</td><td class="r mono">${money(priceUsd(p.c), { co: p.c.co })}</td><td class="r mono">${money(p.val)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No positions yet. <a class="btn ghost" href="#/">Find a coin</a></div>`}
+  ${paperHtml()}
   <div class="shead"><h2>Your launches</h2></div>
   ${mine.length ? `<div class="grid">${mine.map(card).join('')}</div>` : `<div class="empty">You have not launched anything. <a class="btn ghost" href="#/launch">Launch a coin</a></div>`}
   ${mine.length ? `<p class="micro" style="margin-top:10px">Creator tax earned: <b class="mono">${money(mine.reduce((s, c) => s + c.creatorEarned, 0))}</b></p>` : ''}
@@ -1067,6 +1339,11 @@ function account(v) {
   $('#accDisc').onclick = () => dropWallet('Disconnected');
   $('#rst1').onclick = () => { $('#rstC').hidden = false; $('#rst1').textContent = 'Keep my data'; $('#rst1').onclick = () => render(); };
   $('#rst2').onclick = () => { S = freshLedger(); W = null; activeProvider = null; ui.watch = []; store('sc.wallets', {}); store('sc.watch', []); save(); renderConnect(); toast('Demo reset'); location.hash = '#/'; render(); };
+}
+function paperHtml() {
+  const rows = Object.entries((W && W.paper) || {}).map(([k, ps]) => ({ k, ps, p: LIVE.pairs.get(k.slice(5)) }));
+  if (!rows.length) return '';
+  return `<div class="shead"><h2>Paper trades on live tokens</h2><span class="micro">${LIVE.source === 'live' ? 'valued at live prices' : 'valued at snapshot prices'}</span></div><div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">Amount</th><th class="r">Cost</th><th class="r">Value</th><th class="r">P&amp;L</th></tr></thead><tbody>${rows.map(({ k, ps, p }) => { const val = p ? ps.qty * lp(p) : 0, pnl = val - ps.cost; return `<tr class="link" data-go="#/live/${esc(k.slice(5))}"><td><div class="cell-co">${p ? liveImg(p, 'sm') : ''}<b>${esc(ps.sym)}</b><span class="micro">${esc(ps.name)}</span></div></td><td class="r mono">${tok(ps.qty)}</td><td class="r mono">${money(ps.cost)}</td><td class="r mono">${p ? money(val) : '—'}</td><td class="r mono ${cls(pnl)}">${p ? money(pnl) + ' · ' + pct(ps.cost ? pnl / ps.cost : 0) : '—'}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function sellValueUsd(c, b) { const q = quoteSell(c, b); return Math.max(0, q.out) * S.stocks[c.co].px; }
 
@@ -1269,7 +1546,7 @@ function mountChart(c) {
   chartCoin = c;
   if (!window.LightweightCharts) { box.innerHTML = '<canvas style="width:100%;height:100%" data-spark="' + c.id + '"></canvas>'; return; }
   const col = chartColors();
-  chart = LightweightCharts.createChart(box, { autoSize: true, layout: { background: { type: 'solid', color: 'transparent' }, textColor: col.ink, fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }, grid: { vertLines: { color: col.rule }, horzLines: { color: col.rule } }, rightPriceScale: { borderColor: col.rule }, timeScale: { borderColor: col.rule, timeVisible: true, secondsVisible: false }, crosshair: { mode: 0 } });
+  chart = LightweightCharts.createChart(box, { autoSize: true, layout: { background: { type: 'solid', color: 'transparent' }, textColor: col.ink, fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }, grid: { vertLines: { color: col.rule }, horzLines: { color: col.rule } }, rightPriceScale: { borderColor: col.rule }, timeScale: { borderColor: col.rule, timeVisible: true, secondsVisible: false }, localization: { locale: 'en-US' }, crosshair: { mode: 0 } });
   chartSeries = chart.addCandlestickSeries({ upColor: col.up, downColor: col.down, borderVisible: false, wickUpColor: col.up, wickDownColor: col.down, priceFormat: { type: 'custom', formatter: p => fmtTiny(p), minMove: 1e-12 } });
   volSeries = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'v' });
   chart.priceScale('v').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
@@ -1338,6 +1615,8 @@ function boot() {
   save();
   resumeWallet();
   setInterval(loop, 2200);
+  liveRefresh(true);
+  setInterval(() => liveRefresh(), 15000);
   window.addEventListener('resize', () => { clearTimeout(boot.rt); boot.rt = setTimeout(() => { drawSparks(); if ($('#curveCv')) drawCurve($('#curveCv')); }, 120); });
   document.addEventListener('keydown', e => { const cd = e.target.closest && e.target.closest('.card[data-go]'); if (cd && e.key === 'Enter') location.hash = cd.dataset.go; });
 }
