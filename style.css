@@ -655,3 +655,40 @@ footer .brand-mark { width: 24px; height: 24px; }
 .dusk-word { font-size: clamp(88px, 19vw, 250px); display: flex; align-items: center; gap: .08em; }
 .dusk-word .dusk-mark { display: inline-block; width: .82em; height: .82em; background: currentColor; -webkit-mask: var(--kruv-mark) center / contain no-repeat; mask: var(--kruv-mark) center / contain no-repeat; animation: markIn 1.2s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes markIn { from { opacity: 0; transform: translate(-40%, 40%) scale(.6) rotate(-20deg); } }
+
+/* ---------- cookies ---------- */
+.ck-banner { position: fixed; left: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 85; width: min(520px, calc(100vw - 32px)); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: start; padding: 18px; border-radius: 18px; background: var(--solid); border: 1px solid var(--rule-2); box-shadow: var(--shadow), 0 0 0 1px rgba(0,0,0,.2); transform: translateY(140%); opacity: 0; transition: transform .55s cubic-bezier(.2,.8,.2,1.15), opacity .35s; }
+.ck-banner.in { transform: none; opacity: 1; }
+.ck-banner.bite { transform: translateY(140%) rotate(-3deg); opacity: 0; transition: transform .55s cubic-bezier(.6,0,.8,.4) .15s, opacity .4s .25s; }
+.ck-cookie { position: relative; width: 64px; height: 64px; flex: none; }
+.ck-cookie svg { width: 100%; height: 100%; display: block; animation: ckWobble 3.2s ease-in-out infinite; transform-origin: 50% 60%; }
+.ck-cookie.sm { width: 44px; height: 44px; }
+.ck-cookie.sm svg { animation: none; }
+@keyframes ckWobble { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-8deg) translateY(-2px); } }
+.ck-banner:hover .ck-cookie svg { animation-duration: .9s; }
+.ck-crumb { position: absolute; left: 50%; top: 60%; width: 6px; height: 6px; border-radius: 2px; background: #c58b4e; opacity: 0; }
+.ck-banner.bite .ck-crumb { animation: ckCrumb .7s cubic-bezier(.2,.8,.2,1) forwards; }
+.ck-banner.bite .ck-crumb:nth-child(2) { --dx: -26px; } .ck-banner.bite .ck-crumb:nth-child(3) { --dx: 8px; animation-delay: .05s; } .ck-banner.bite .ck-crumb:nth-child(4) { --dx: 30px; animation-delay: .1s; }
+@keyframes ckCrumb { 0% { opacity: 1; transform: translate(0, 0); } 100% { opacity: 0; transform: translate(var(--dx, 0), 46px) rotate(120deg); } }
+.ck-banner.bite .ck-cookie svg { animation: ckBite .25s ease forwards; }
+@keyframes ckBite { to { transform: scale(.9) rotate(12deg); clip-path: circle(42% at 40% 58%); } }
+.ck-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ck-body b { font: 650 18px var(--display); }
+.ck-body p { color: var(--ink-2); font-size: 14px; }
+.ck-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.ck-more { color: var(--accent); font-weight: 600; }
+.ck-prefs { display: flex; flex-direction: column; gap: 10px; }
+.ck-row { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 14px; border-radius: 12px; border: 1px solid var(--rule); background: var(--surface-2); }
+.ck-row p { color: var(--ink-2); font-size: 13px; margin-top: 4px; }
+.sw { position: relative; flex: none; width: 50px; height: 28px; cursor: pointer; }
+.sw input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; z-index: 1; }
+.sw i { pointer-events: none; position: absolute; inset: 0; border-radius: 99px; background: var(--surface-3); border: 1px solid var(--rule-2); transition: background .2s, border-color .2s; }
+.sw i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--ink-2); transition: transform .3s cubic-bezier(.2,.8,.2,1.3), background .2s; }
+.sw input:checked + i { background: var(--accent); border-color: var(--accent); }
+.sw input:checked + i::after { transform: translateX(22px); background: var(--accent-ink); }
+.sw input:disabled + i { opacity: .55; cursor: not-allowed; }
+.sw input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ck-status { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.ck-status > div:nth-child(2) { flex: 1; min-width: 200px; }
+@media (max-width: 560px) { .ck-banner { left: 16px; grid-template-columns: minmax(0, 1fr); } .ck-banner .ck-cookie { width: 48px; height: 48px; } }
+@media (prefers-reduced-motion: reduce) { .ck-cookie svg { animation: none; } }

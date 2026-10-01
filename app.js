@@ -9,7 +9,30 @@ const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const now = () => Date.now();
-function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
+// ---------- consent ----------
+// Kruv sets one cookie (kruv_consent) to remember your choice. Everything else lives in this browser's
+// local storage. "Necessary" keys keep the demo working; "preference" keys are only written after you allow them.
+const PREF_KEYS = ['sc.theme', 'sc.ccy', 'sc.watch', 'sc.tab2', 'sc.liveSort', 'sc.liveTf', 'sc.zecTf', 'sc.slip', 'sc.wmChain', 'sc.lastWallet', 'sc.draft', 'sc.tf'];
+const memStore = {};
+function readConsent() {
+  try { const m = document.cookie.match(/(?:^|; )kruv_consent=([^;]*)/); if (m) return JSON.parse(decodeURIComponent(m[1])); } catch (e) { /* bad cookie */ }
+  try { return JSON.parse(localStorage.getItem('kruv.consent')); } catch (e) { return null; }
+}
+let CONSENT = readConsent();
+const prefsAllowed = () => !!(CONSENT && CONSENT.prefs);
+function writeConsent(prefs) {
+  CONSENT = { v: 1, necessary: true, prefs: !!prefs, analytics: false, at: Date.now() };
+  const val = encodeURIComponent(JSON.stringify(CONSENT));
+  try { document.cookie = `kruv_consent=${val}; Max-Age=${180 * 86400}; Path=/; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`; } catch (e) { /* cookies blocked */ }
+  try { localStorage.setItem('kruv.consent', JSON.stringify(CONSENT)); } catch (e) { /* storage blocked */ }
+  if (prefs) { Object.entries(memStore).forEach(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }); }
+  else PREF_KEYS.forEach(k => { try { if (localStorage.getItem(k) != null) memStore[k] = JSON.parse(localStorage.getItem(k)); localStorage.removeItem(k); } catch (e) { /* ignore */ } });
+}
+function store(k, v) {
+  const pref = PREF_KEYS.includes(k);
+  if (pref && !prefsAllowed()) { if (v === undefined) return k in memStore ? memStore[k] : null; memStore[k] = v; return; }
+  try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; }
+}
 function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 function randAddr(r) { let s = '0x'; for (let i = 0; i < 40; i++) s += '0123456789abcdef'[Math.floor(r() * 16)]; return s; }
@@ -316,7 +339,7 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList
 
 // ---------- header ----------
 const NAV = [['', 'Board'], ['zcash', 'Zcash'], ['pairs', 'Pairs'], ['unclaimed', 'Unclaimed'], ['beat', 'Scoreboard'], ['watch', 'Watchlist'], ['legs', 'Two legs'], ['launch', 'Launch'], ['account', 'Account'], ['docs', 'Docs']];
-const TITLES = { treasury: 'Treasury', security: 'Security', coin: 'Coin' };
+const TITLES = { treasury: 'Treasury', security: 'Security', coin: 'Coin', cookies: 'Cookies' };
 function renderNav() {
   const cur = routeParts()[0] || '';
   const html = NAV.map(([r, l]) => `<a href="#/${r}" class="${cur === r ? 'on' : ''}">${l}</a>`).join('');
@@ -357,7 +380,7 @@ function initHeader() {
     // a link to the page you are already on scrolls back to the top and refreshes it
     const same = e.target.closest('a[href^="#"]');
     if (same && !e.defaultPrevented) { const h = same.getAttribute('href'); const norm = x => (x || '').replace(/^#\/?/, '').replace(/\/$/, ''); if (norm(h) === norm(location.hash)) { e.preventDefault(); closeModal(); const m = $('.mobile-nav'); if (m) m.remove(); if (scrollY > 10) window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); render(); return; } }
-    const md = e.target.closest('[data-modal]'); if (md) { md.dataset.modal === 'license' ? openLicense() : openStorage(); return; }
+    const md = e.target.closest('[data-modal]'); if (md) { md.dataset.modal === 'license' ? openLicense() : md.dataset.modal === 'cookies' ? openCookiePrefs() : openStorage(); return; }
     const xr = e.target.closest('[data-expand]');
     if (xr && !e.target.closest('a,button')) { const d = xr.nextElementSibling; const open = !d.classList.contains('open'); $$('.xdetail.open').forEach(o => { o.classList.remove('open'); o.previousElementSibling.setAttribute('aria-expanded', 'false'); }); d.classList.toggle('open', open); xr.setAttribute('aria-expanded', open); return; }
     const fl = e.target.closest('.flip');
@@ -421,13 +444,7 @@ function openLicense() {
   };
   function selectLic() { const r = document.createRange(); r.selectNodeContents($('#licTxt')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('Selected. Press Ctrl+C to copy.'); }
 }
-function openStorage() {
-  openModal('What we store', `<div class="prose"><p>Everything stays in this browser's local storage. Nothing is sent to a server.</p><ul>
-  <li><code>sc.state.v2</code>: the demo ledger (coins, curves, trades, treasury).</li>
-  <li><code>sc.wallets</code>, <code>sc.cur</code>: the addresses you connected, their demo balances and which one is active. Private keys never reach this page.</li>
-  <li><code>sc.watch</code>, <code>sc.theme</code>, <code>sc.ccy</code>: your watchlist, theme and display currency.</li></ul>
-  <p>Clearing site data or pressing <strong>Reset demo</strong> on the Account page wipes all of it.</p></div>`);
-}
+function openStorage() { location.hash = '#/cookies'; }
 
 // ---------- wallets: real browser wallets (EIP-6963 for EVM, Phantom/Solflare for Solana) plus a demo wallet ----------
 // A real wallet signs you in with its address and can sign a message to prove you own it.
@@ -1536,6 +1553,75 @@ function zecPagePaint() {
   if (zecTradePaint) zecTradePaint();
 }
 
+// ---------- cookie banner, preferences and policy ----------
+const COOKIE_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 6a26 26 0 1 0 26 26 8 8 0 0 1-9-7 8 8 0 0 1-8-9 8 8 0 0 1-9-10z" fill="#d9a066"/><path d="M32 6a26 26 0 1 0 26 26 8 8 0 0 1-9-7 8 8 0 0 1-8-9 8 8 0 0 1-9-10z" fill="none" stroke="#8a5a2b" stroke-width="2.5"/><g fill="#5b3415"><circle cx="22" cy="26" r="3.6"/><circle cx="36" cy="40" r="4"/><circle cx="20" cy="42" r="3"/><circle cx="44" cy="50" r="2.6"/><circle cx="30" cy="16" r="2.4"/><circle cx="48" cy="32" r="2"/></g><g fill="#f3d3a6" opacity=".7"><circle cx="28" cy="32" r="1.4"/><circle cx="40" cy="26" r="1.2"/><circle cx="30" cy="50" r="1.3"/></g></svg>`;
+function cookieBanner() {
+  if (CONSENT || $('.ck-banner')) return;
+  const gpc = navigator.globalPrivacyControl === true;
+  const el = document.createElement('section');
+  el.className = 'ck-banner'; el.setAttribute('role', 'region'); el.setAttribute('aria-label', 'Cookie choices');
+  el.innerHTML = `<div class="ck-cookie">${COOKIE_SVG}<i class="ck-crumb"></i><i class="ck-crumb"></i><i class="ck-crumb"></i></div>
+    <div class="ck-body"><b>Cookies on Kruv</b><p>We use one cookie to remember this choice, and your browser's storage to keep the demo working. With your OK we also remember your theme, currency and watchlist. No ads, no tracking.${gpc ? ' <span class="pill">Global Privacy Control detected</span>' : ''}</p>
+    <div class="ck-actions"><button class="btn primary" type="button" data-ck="all">Accept all</button><button class="btn ghost" type="button" data-ck="necessary">Necessary only</button><button class="foot-link ck-more" type="button" data-ck="custom">Customize</button></div></div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  el.onclick = e => {
+    const b = e.target.closest('[data-ck]'); if (!b) return;
+    if (b.dataset.ck === 'custom') return openCookiePrefs();
+    finishConsent(b.dataset.ck === 'all');
+  };
+}
+function finishConsent(prefs) {
+  writeConsent(prefs);
+  const el = $('.ck-banner');
+  if (el) { el.classList.add('bite'); el.classList.remove('in'); setTimeout(() => el.remove(), 650); }
+  closeModal();
+  toast(prefs ? 'Saved. Kruv will remember your settings.' : 'Saved. Only necessary storage is on.');
+  if (routeParts()[0] === 'cookies') render();
+}
+function openCookiePrefs() {
+  const on = prefsAllowed();
+  openModal('Cookie settings', `<div class="ck-prefs">
+    <div class="ck-row"><div><b>Necessary</b><p>Your consent cookie, the demo market and your demo wallets. Kruv doesn't work without them.</p></div><label class="sw"><input type="checkbox" checked disabled aria-label="Necessary, always on"><i></i></label></div>
+    <div class="ck-row"><div><b>Preferences</b><p>Theme, display currency, watchlist, open tabs, chart timeframe, slippage, your last wallet and launch drafts.</p></div><label class="sw"><input type="checkbox" id="ckPrefs" ${on ? 'checked' : ''} aria-label="Preferences"><i></i></label></div>
+    <div class="ck-row"><div><b>Analytics</b><p>Kruv runs no analytics or ad trackers, so there is nothing to switch on.</p></div><label class="sw"><input type="checkbox" disabled aria-label="Analytics, not used"><i></i></label></div>
+    <div class="bar" style="margin:16px 0 0"><button class="btn primary" type="button" id="ckSave">Save choices</button><button class="btn ghost" type="button" id="ckAll">Accept all</button><a class="foot-link" href="#/cookies" data-close>Read the cookie policy</a></div>
+  </div>`);
+  $('#ckSave').onclick = () => finishConsent($('#ckPrefs').checked);
+  $('#ckAll').onclick = () => finishConsent(true);
+}
+function cookiesPage(v) {
+  const rows = [
+    ['kruv_consent', 'Cookie', 'Necessary', 'Remembers your cookie choice', '180 days'],
+    ['sc.state.v2', 'Local storage', 'Necessary', 'The demo market: coins, curves, trades, treasury', 'Until you clear it'],
+    ['sc.wallets, sc.cur', 'Local storage', 'Necessary', 'Connected addresses, their demo balances and paper trades', 'Until you clear it'],
+    ['kruv.consent', 'Local storage', 'Necessary', 'Backup of your cookie choice if cookies are blocked', 'Until you clear it'],
+    ['sc.theme, sc.ccy', 'Local storage', 'Preferences', 'Light or dark theme and display currency', 'Until you clear it'],
+    ['sc.watch', 'Local storage', 'Preferences', 'Your watchlist', 'Until you clear it'],
+    ['sc.tab2, sc.liveSort, sc.tf, sc.liveTf, sc.zecTf', 'Local storage', 'Preferences', 'Open board tab, sort order and chart timeframes', 'Until you clear it'],
+    ['sc.slip, sc.wmChain, sc.lastWallet, sc.draft', 'Local storage', 'Preferences', 'Slippage, wallet filter, last wallet used and unsent launch drafts', 'Until you clear it'],
+  ];
+  const ext = [
+    ['Google Fonts', 'Typefaces'], ['jsDelivr, cdnjs', 'Chart and QR code libraries'], ['DexScreener, GeckoTerminal', 'Live Solana token prices and candles'],
+    ['Coinbase Exchange, Binance', 'Zcash price and candles'], ['Blockchair', 'Zcash block height'],
+  ];
+  v.innerHTML = `<div class="page-head"><span class="eyebrow">Cookies</span><h1>What Kruv stores</h1><p>Kruv has no accounts and no server of its own. It sets one cookie and keeps everything else in this browser. Nothing here is sent to us, and nothing is used for ads.</p></div>
+  <div class="panel ck-status"><div class="ck-cookie sm">${COOKIE_SVG}</div><div><b>Your choice:</b> ${CONSENT ? (CONSENT.prefs ? 'necessary and preferences' : 'necessary only') + `, saved ${ago(CONSENT.at)} ago` : 'not made yet'}</div><button class="btn primary" type="button" id="ckOpen">Change settings</button></div>
+  <div class="shead"><h2>Storage on this device</h2></div>
+  <div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Category</th><th>Purpose</th><th>Kept for</th></tr></thead><tbody>${rows.map(r => `<tr><td class="mono">${esc(r[0])}</td><td>${r[1]}</td><td><span class="pill ${r[2] === 'Necessary' ? 'up' : ''}">${r[2]}</span></td><td style="white-space:normal;min-width:240px">${esc(r[3])}</td><td class="muted">${r[4]}</td></tr>`).join('')}</tbody></table></div>
+  <div class="shead"><h2>Outside services</h2></div>
+  <div class="prose"><p>To load fonts, libraries and live prices, your browser contacts these services directly. They see your IP address the way any website does. Kruv does not ask them to set cookies.</p></div>
+  <div class="tbl-wrap" style="margin-top:12px"><table><tbody>${ext.map(r => `<tr><td><b>${r[0]}</b></td><td>${r[1]}</td></tr>`).join('')}</tbody></table></div>
+  <div class="shead"><h2>Clear everything</h2></div>
+  <div class="panel"><p class="hint">Removes the cookie and every Kruv key from this browser, including demo wallets and paper trades. The page reloads afterwards.</p><div class="bar" style="margin:12px 0 0"><button class="btn ghost" type="button" id="ckWipe1">Clear Kruv data</button><span id="ckWipeC" hidden><button class="btn primary" type="button" id="ckWipe2" style="background:var(--down)">Yes, clear it</button></span></div></div>`;
+  $('#ckOpen').onclick = openCookiePrefs;
+  $('#ckWipe1').onclick = () => { $('#ckWipeC').hidden = false; };
+  $('#ckWipe2').onclick = () => {
+    try { document.cookie = 'kruv_consent=; Max-Age=0; Path=/'; Object.keys(localStorage).filter(k => /^(sc\.|kruv\.)/.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) { /* storage blocked */ }
+    location.hash = '#/'; location.reload();
+  };
+}
+
 // ---------- routing ----------
 function routeParts() { return (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean).map(decodeURIComponent); }
 let chart = null, chartSeries = null, volSeries = null, chartCoin = null, chartTf = store('sc.tf') || 300;
@@ -1546,7 +1632,7 @@ function render() {
   const [p, a] = routeParts();
   renderNav();
   const view = $('#view');
-  const pages = { '': home, pairs, unclaimed, beat, watch, legs, launch, account, treasury, docs, security, coin, live: liveTokenPage, zcash: zcashPage };
+  const pages = { '': home, pairs, unclaimed, beat, watch, legs, launch, account, treasury, docs, security, coin, live: liveTokenPage, zcash: zcashPage, cookies: cookiesPage };
   const fn = pages[p || ''];
   view.innerHTML = '';
   if (!fn) { view.innerHTML = `<div class="empty"><h2>Nothing here</h2><p>That page does not exist.</p><a class="btn primary" href="#/">Back to the board</a></div>`; return; }
@@ -2106,6 +2192,7 @@ function boot() {
   render();
   save();
   resumeWallet();
+  setTimeout(cookieBanner, 1200);
   setInterval(loop, 2200);
   liveRefresh(true);
   setInterval(() => liveRefresh(), 15000);
